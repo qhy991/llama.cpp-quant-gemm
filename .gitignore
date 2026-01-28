@@ -1,0 +1,34 @@
+# Build directories
+build/
+bin/
+
+# Compiled executables
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.pyc
+
+# CUDA
+*.ptx
+*.cubin
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
