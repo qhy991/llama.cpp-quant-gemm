@@ -1,0 +1,52 @@
+{
+  "name": "rmsnorm_h4096",
+  "description": "Root Mean Square Layer Normalization. Simpler than LayerNorm (no mean subtraction), used in Llama and modern LLMs.",
+  "op_type": "rmsnorm",
+  "tags": [
+    "status:verified",
+    "model:llama-compatible",
+    "normalization:rms"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch/sequence dimension"
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 4096,
+      "description": "Hidden dimension for normalization"
+    }
+  },
+  "inputs": {
+    "hidden_states": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float32",
+      "description": "Input hidden states"
+    },
+    "weight": {
+      "shape": ["hidden_size"],
+      "dtype": "float32",
+      "description": "Learnable scale parameter (gamma)"
+    },
+    "eps": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Small constant for numerical stability (typically 1e-5 or 1e-6)"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float32",
+      "description": "Normalized output"
+    }
+  },
+  "algorithm": {
+    "step1": "Compute RMS: rms = sqrt(mean(x^2) + eps)",
+    "step2": "Compute inverse RMS: inv_rms = 1 / rms",
+    "step3": "Normalize: x_norm = x * inv_rms",
+    "step4": "Scale: output = x_norm * weight"
+  },
+  "reference": "import torch\n\ndef run(hidden_states, weight, eps):\n    # Cast to float32 for numerical stability\n    x = hidden_states.to(torch.float32)\n    \n    # Compute inverse RMS\n    variance = x.pow(2).mean(dim=-1, keepdim=True)\n    inv_rms = torch.rsqrt(variance + eps)\n    \n    # Normalize and scale\n    x_norm = x * inv_rms\n    output = x_norm * weight.to(torch.float32)\n    \n    return output.to(hidden_states.dtype)"
+}

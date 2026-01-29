@@ -1,0 +1,56 @@
+{
+  "name": "quantize_q4_0",
+  "description": "Quantize FP32 tensor to Q4_0 format. 4-bit asymmetric quantization with offset +8 encoding. llama.cpp compatible.",
+  "op_type": "quantize",
+  "tags": [
+    "status:verified",
+    "format:q4_0",
+    "stage:step2",
+    "model:llama-compatible"
+  ],
+  "axes": {
+    "num_elements": {
+      "type": "var",
+      "description": "Total number of elements (must be multiple of 32)"
+    },
+    "QK": {
+      "type": "const",
+      "value": 32,
+      "description": "Q4_0 block size"
+    }
+  },
+  "constraints": [
+    "num_elements % QK == 0"
+  ],
+  "inputs": {
+    "x": {
+      "shape": ["num_elements"],
+      "dtype": "float32",
+      "description": "Input FP32 tensor to quantize"
+    }
+  },
+  "outputs": {
+    "y": {
+      "shape": ["num_elements/QK"],
+      "dtype": "q4_0",
+      "description": "Quantized Q4_0 blocks"
+    }
+  },
+  "quantization_spec": {
+    "q4_0": {
+      "block_size": 32,
+      "bytes_per_block": 18,
+      "structure": {
+        "d": {"dtype": "float16", "bytes": 2},
+        "qs": {"dtype": "uint8", "count": 16, "bytes": 16}
+      },
+      "algorithm": {
+        "step1": "Find amax = max(|x[0:31]|)",
+        "step2": "Compute scale d = amax / 7.0",
+        "step3": "For each element: q = round(x / d) + 8, clamp to [0, 15]",
+        "step4": "Pack two 4-bit values per byte: qs[i] = q[i] | (q[i+16] << 4)"
+      }
+    }
+  },
+  "reference": "import torch\nimport struct\n\ndef run(x):\n    num_elements = x.shape[0]\n    num_blocks = num_elements // 32\n    \n    # Output: list of Q4_0 blocks\n    blocks = []\n    \n    for b in range(num_blocks):\n        block_data = x[b*32:(b+1)*32]\n        \n        # Step 1: Find max absolute value\n        amax = torch.max(torch.abs(block_data)).item()\n        \n        # Step 2: Compute scale\n        d = amax / 7.0 if amax > 0 else 1.0\n        \n        # Step 3: Quantize\n        q = torch.round(block_data / d) + 8\n        q = torch.clamp(q, 0, 15).to(torch.uint8)\n        \n        # Step 4: Pack into bytes\n        qs = torch.zeros(16, dtype=torch.uint8)\n        for i in range(16):\n            qs[i] = q[i] | (q[i + 16] << 4)\n        \n        blocks.append({'d': d, 'qs': qs})\n    \n    return blocks"
+}

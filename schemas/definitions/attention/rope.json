@@ -1,0 +1,64 @@
+{
+  "name": "rope_d128",
+  "description": "Rotary Position Embedding (RoPE). Encodes position information by rotating query/key vectors. Used in Llama, Mistral, and modern LLMs.",
+  "op_type": "rope",
+  "tags": [
+    "status:verified",
+    "model:llama-compatible",
+    "attention:rope"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch dimension"
+    },
+    "seq_len": {
+      "type": "var",
+      "description": "Sequence length"
+    },
+    "num_heads": {
+      "type": "var",
+      "description": "Number of attention heads"
+    },
+    "head_dim": {
+      "type": "const",
+      "value": 128,
+      "description": "Dimension per head (must be even)"
+    },
+    "base": {
+      "type": "const",
+      "value": 10000,
+      "description": "RoPE base frequency"
+    }
+  },
+  "constraints": [
+    "head_dim % 2 == 0"
+  ],
+  "inputs": {
+    "x": {
+      "shape": ["batch_size", "seq_len", "num_heads", "head_dim"],
+      "dtype": "float32",
+      "description": "Input query or key tensor"
+    },
+    "position_ids": {
+      "shape": ["batch_size", "seq_len"],
+      "dtype": "int64",
+      "description": "Position indices for each token"
+    }
+  },
+  "outputs": {
+    "y": {
+      "shape": ["batch_size", "seq_len", "num_heads", "head_dim"],
+      "dtype": "float32",
+      "description": "Position-encoded output"
+    }
+  },
+  "algorithm": {
+    "step1": "Compute frequency bands: freq[i] = 1 / (base^(2i/head_dim))",
+    "step2": "Compute angles: theta[pos, i] = pos * freq[i]",
+    "step3": "Split x into pairs: (x0, x1), (x2, x3), ...",
+    "step4": "Apply rotation: y[2i] = x[2i]*cos(theta) - x[2i+1]*sin(theta)",
+    "step5": "Apply rotation: y[2i+1] = x[2i]*sin(theta) + x[2i+1]*cos(theta)"
+  },
+  "reference": "import torch\n\ndef run(x, position_ids):\n    batch_size, seq_len, num_heads, head_dim = x.shape\n    base = 10000\n    \n    # Step 1: Compute frequency bands\n    inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))\n    \n    # Step 2: Compute angles for each position\n    # position_ids: [batch, seq_len] -> [batch, seq_len, head_dim/2]\n    freqs = torch.einsum('bs,d->bsd', position_ids.float(), inv_freq)\n    \n    # Expand for all heads\n    cos = torch.cos(freqs).unsqueeze(2)  # [batch, seq_len, 1, head_dim/2]\n    sin = torch.sin(freqs).unsqueeze(2)  # [batch, seq_len, 1, head_dim/2]\n    \n    # Step 3-5: Apply rotation\n    x_reshape = x.view(batch_size, seq_len, num_heads, head_dim // 2, 2)\n    x0 = x_reshape[..., 0]  # Even indices\n    x1 = x_reshape[..., 1]  # Odd indices\n    \n    y0 = x0 * cos - x1 * sin\n    y1 = x0 * sin + x1 * cos\n    \n    y = torch.stack([y0, y1], dim=-1).flatten(-2)\n    return y"
+}

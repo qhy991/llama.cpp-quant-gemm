@@ -1,0 +1,34 @@
+{
+  "name": "gemm_q4_0_q8_1_cuda_tiled",
+  "description": "Tiled CUDA implementation with shared memory optimization. 2-3x faster than naive.",
+  "definition": "gemm_q4_0_q8_1_w4a8",
+  "author": "quant-gemm-from-scratch",
+  "tags": [
+    "implementation:tiled",
+    "hardware:cuda",
+    "optimization:shared_memory"
+  ],
+  "spec": {
+    "language": "cuda",
+    "target_hardware": ["sm_61", "sm_70", "sm_75", "sm_80", "sm_86", "sm_89", "sm_90"],
+    "entry_point": "include/gemm_cuda_tiled.cuh::gemm_q4_0_q8_1_tiled",
+    "dependencies": ["cuda>=11.0", "curand"],
+    "destination_passing_style": true
+  },
+  "performance": {
+    "estimated_tflops": 0.4,
+    "speedup_vs_naive": "2-3x",
+    "optimization_level": 2
+  },
+  "optimizations": [
+    "Shared memory tiling for data reuse",
+    "Thread block cooperation",
+    "Reduced global memory traffic"
+  ],
+  "sources": [
+    {
+      "path": "include/gemm_cuda_tiled.cuh",
+      "description": "Tiled CUDA kernel with shared memory"
+    }
+  ]
+}

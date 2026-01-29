@@ -9,6 +9,16 @@ bin/
 *.dylib
 *.exe
 
+# Test binaries in root (compiled during development)
+/test_cpu_ref
+/test_custom_mnk
+/test_dot
+/test_dp4a
+/test_load
+/test_q8_1
+/test_simple_gemm
+/test_vec_dot
+
 # Python
 __pycache__/
 *.py[cod]

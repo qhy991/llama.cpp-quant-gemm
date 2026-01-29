@@ -1,0 +1,67 @@
+{
+  "name": "gemm_q4_0_w4a16",
+  "description": "W4A16 quantized GEMM with Q4_0 weights and FP16/FP32 activations. Weights are 4-bit quantized, activations remain in full precision.",
+  "op_type": "gemm_q4_0",
+  "tags": [
+    "status:verified",
+    "quantization:w4a16",
+    "format:q4_0",
+    "stage:step3",
+    "model:llama-compatible"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch/sequence dimension"
+    },
+    "N": {
+      "type": "var",
+      "description": "Output features"
+    },
+    "K": {
+      "type": "var",
+      "description": "Input features (must be multiple of 32)"
+    },
+    "QK": {
+      "type": "const",
+      "value": 32,
+      "description": "Q4_0 block size (elements per block)"
+    }
+  },
+  "constraints": [
+    "K % QK == 0"
+  ],
+  "inputs": {
+    "A": {
+      "shape": ["M", "K"],
+      "dtype": "float32",
+      "description": "Activation matrix (FP32)"
+    },
+    "B_q4_0": {
+      "shape": ["N", "K/QK"],
+      "dtype": "q4_0",
+      "description": "Q4_0 quantized weight blocks. Each block: {half d, uint8_t qs[16]}"
+    }
+  },
+  "outputs": {
+    "C": {
+      "shape": ["M", "N"],
+      "dtype": "float32",
+      "description": "Output matrix"
+    }
+  },
+  "quantization_spec": {
+    "q4_0": {
+      "block_size": 32,
+      "bytes_per_block": 18,
+      "bits_per_element": 4.5,
+      "structure": {
+        "d": {"dtype": "float16", "bytes": 2, "description": "Scale factor"},
+        "qs": {"dtype": "uint8", "count": 16, "bytes": 16, "description": "Packed 4-bit values (2 per byte)"}
+      },
+      "quantize": "d = max(|x|) / 7.0; q = round(x / d) + 8, q ∈ [0, 15]",
+      "dequantize": "x = (q - 8) * d"
+    }
+  },
+  "reference": "import torch\n\ndef dequantize_q4_0_block(d, qs):\n    \"\"\"Dequantize a Q4_0 block (32 elements)\"\"\"\n    result = torch.zeros(32, dtype=torch.float32)\n    for i in range(16):\n        q0 = (qs[i] & 0x0F) - 8\n        q1 = ((qs[i] >> 4) & 0x0F) - 8\n        result[i] = q0 * d\n        result[i + 16] = q1 * d\n    return result\n\ndef run(A, B_q4_0):\n    M, K = A.shape\n    N, num_blocks = B_q4_0.shape[0], B_q4_0.shape[1]\n    \n    # Dequantize weights\n    B = torch.zeros(N, K, dtype=torch.float32)\n    for n in range(N):\n        for b in range(num_blocks):\n            block = B_q4_0[n, b]\n            B[n, b*32:(b+1)*32] = dequantize_q4_0_block(block.d, block.qs)\n    \n    # Standard GEMM\n    C = torch.matmul(A, B.T)\n    return C"
+}

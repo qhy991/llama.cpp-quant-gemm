@@ -1,0 +1,29 @@
+{
+  "name": "gemm_q4_0_q8_1_cuda_naive",
+  "description": "Naive CUDA implementation of Q4_0 × Q8_1 GEMM with compensation formula. Baseline for correctness verification.",
+  "definition": "gemm_q4_0_q8_1_w4a8",
+  "author": "quant-gemm-from-scratch",
+  "tags": [
+    "implementation:naive",
+    "hardware:cuda",
+    "optimization:none"
+  ],
+  "spec": {
+    "language": "cuda",
+    "target_hardware": ["sm_61", "sm_70", "sm_75", "sm_80", "sm_86", "sm_89", "sm_90"],
+    "entry_point": "include/gemm_cuda_naive.cuh::gemm_q4_0_q8_1_naive",
+    "dependencies": ["cuda>=11.0", "curand"],
+    "destination_passing_style": true
+  },
+  "performance": {
+    "estimated_tflops": 0.15,
+    "memory_bound": true,
+    "optimization_level": 1
+  },
+  "sources": [
+    {
+      "path": "include/gemm_cuda_naive.cuh",
+      "description": "Naive CUDA kernel implementation"
+    }
+  ]
+}

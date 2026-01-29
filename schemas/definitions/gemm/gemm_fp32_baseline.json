@@ -1,0 +1,44 @@
+{
+  "name": "gemm_fp32_baseline",
+  "description": "FP32 baseline GEMM: C = A @ B.T. Reference implementation for correctness verification.",
+  "op_type": "gemm_fp32",
+  "tags": [
+    "status:verified",
+    "precision:fp32",
+    "stage:step1"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Number of rows in A and C"
+    },
+    "N": {
+      "type": "var",
+      "description": "Number of columns in B.T and C"
+    },
+    "K": {
+      "type": "var",
+      "description": "Shared dimension (columns of A, rows of B)"
+    }
+  },
+  "inputs": {
+    "A": {
+      "shape": ["M", "K"],
+      "dtype": "float32",
+      "description": "Left matrix"
+    },
+    "B": {
+      "shape": ["N", "K"],
+      "dtype": "float32",
+      "description": "Right matrix (will be transposed)"
+    }
+  },
+  "outputs": {
+    "C": {
+      "shape": ["M", "N"],
+      "dtype": "float32",
+      "description": "Output matrix C = A @ B.T"
+    }
+  },
+  "reference": "import torch\n\ndef run(A, B):\n    # C = A @ B.T\n    # A: [M, K], B: [N, K] -> C: [M, N]\n    C = torch.matmul(A, B.T)\n    return C"
+}

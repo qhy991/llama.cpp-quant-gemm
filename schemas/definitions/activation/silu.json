@@ -1,0 +1,36 @@
+{
+  "name": "silu_h4096",
+  "description": "SiLU (Sigmoid Linear Unit) activation function: silu(x) = x * sigmoid(x). Also known as Swish activation. Used in Llama, Mistral, and other modern LLMs.",
+  "op_type": "silu",
+  "tags": [
+    "status:verified",
+    "model:llama-compatible",
+    "activation:silu"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch/sequence dimension"
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 4096,
+      "description": "Hidden dimension"
+    }
+  },
+  "inputs": {
+    "x": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float32",
+      "description": "Input tensor"
+    }
+  },
+  "outputs": {
+    "y": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float32",
+      "description": "Output tensor: y = x * sigmoid(x)"
+    }
+  },
+  "reference": "import torch\n\ndef run(x):\n    # SiLU(x) = x * sigmoid(x)\n    return x * torch.sigmoid(x)"
+}

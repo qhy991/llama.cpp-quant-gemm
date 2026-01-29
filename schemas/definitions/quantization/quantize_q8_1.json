@@ -1,0 +1,59 @@
+{
+  "name": "quantize_q8_1",
+  "description": "Quantize FP32 tensor to Q8_1 format. 8-bit symmetric quantization with sum storage for compensation. llama.cpp compatible.",
+  "op_type": "quantize",
+  "tags": [
+    "status:verified",
+    "format:q8_1",
+    "stage:step4",
+    "model:llama-compatible",
+    "compensation:sum_stored"
+  ],
+  "axes": {
+    "num_elements": {
+      "type": "var",
+      "description": "Total number of elements (must be multiple of 32)"
+    },
+    "QK": {
+      "type": "const",
+      "value": 32,
+      "description": "Q8_1 block size"
+    }
+  },
+  "constraints": [
+    "num_elements % QK == 0"
+  ],
+  "inputs": {
+    "x": {
+      "shape": ["num_elements"],
+      "dtype": "float32",
+      "description": "Input FP32 tensor to quantize"
+    }
+  },
+  "outputs": {
+    "y": {
+      "shape": ["num_elements/QK"],
+      "dtype": "q8_1",
+      "description": "Quantized Q8_1 blocks"
+    }
+  },
+  "quantization_spec": {
+    "q8_1": {
+      "block_size": 32,
+      "bytes_per_block": 36,
+      "structure": {
+        "ds": {"dtype": "half2", "bytes": 4, "description": "(scale, sum) packed"},
+        "qs": {"dtype": "int8", "count": 32, "bytes": 32}
+      },
+      "algorithm": {
+        "step1": "Find amax = max(|x[0:31]|)",
+        "step2": "Compute scale d = amax / 127.0",
+        "step3": "Compute sum s = sum(x[0:31])",
+        "step4": "For each element: q = round(x / d), clamp to [-128, 127]",
+        "step5": "Pack scale and sum into half2: ds = (d, s)"
+      },
+      "note": "Sum is stored for compensation formula in Q4_0 × Q8_1 dot product"
+    }
+  },
+  "reference": "import torch\n\ndef run(x):\n    num_elements = x.shape[0]\n    num_blocks = num_elements // 32\n    \n    blocks = []\n    \n    for b in range(num_blocks):\n        block_data = x[b*32:(b+1)*32]\n        \n        # Step 1: Find max absolute value\n        amax = torch.max(torch.abs(block_data)).item()\n        \n        # Step 2: Compute scale\n        d = amax / 127.0 if amax > 0 else 1.0\n        \n        # Step 3: Compute sum (IMPORTANT for compensation)\n        s = torch.sum(block_data).item()\n        \n        # Step 4: Quantize\n        q = torch.round(block_data / d)\n        q = torch.clamp(q, -128, 127).to(torch.int8)\n        \n        blocks.append({'d': d, 's': s, 'qs': q})\n    \n    return blocks"
+}

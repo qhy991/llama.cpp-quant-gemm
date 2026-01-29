@@ -1,0 +1,46 @@
+{
+  "name": "softmax_d128",
+  "description": "Softmax operation along the last dimension. Numerically stable implementation with max subtraction.",
+  "op_type": "softmax",
+  "tags": [
+    "status:verified",
+    "attention:softmax"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch dimension"
+    },
+    "seq_len": {
+      "type": "var",
+      "description": "Sequence length dimension"
+    },
+    "head_dim": {
+      "type": "const",
+      "value": 128,
+      "description": "Attention head dimension"
+    }
+  },
+  "inputs": {
+    "x": {
+      "shape": ["batch_size", "seq_len", "head_dim"],
+      "dtype": "float32",
+      "description": "Input logits"
+    }
+  },
+  "outputs": {
+    "y": {
+      "shape": ["batch_size", "seq_len", "head_dim"],
+      "dtype": "float32",
+      "description": "Softmax probabilities (sum to 1 along last dim)"
+    }
+  },
+  "algorithm": {
+    "step1": "Compute max: m = max(x, dim=-1)",
+    "step2": "Subtract max for stability: x_shifted = x - m",
+    "step3": "Compute exponential: exp_x = exp(x_shifted)",
+    "step4": "Compute sum: sum_exp = sum(exp_x, dim=-1)",
+    "step5": "Normalize: y = exp_x / sum_exp"
+  },
+  "reference": "import torch\n\ndef run(x):\n    # Numerically stable softmax\n    # Step 1-2: Subtract max for numerical stability\n    x_max = torch.max(x, dim=-1, keepdim=True).values\n    x_shifted = x - x_max\n    \n    # Step 3-5: Compute softmax\n    exp_x = torch.exp(x_shifted)\n    sum_exp = torch.sum(exp_x, dim=-1, keepdim=True)\n    y = exp_x / sum_exp\n    \n    return y"
+}

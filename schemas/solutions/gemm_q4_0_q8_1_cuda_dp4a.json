@@ -1,0 +1,41 @@
+{
+  "name": "gemm_q4_0_q8_1_cuda_dp4a",
+  "description": "DP4A optimized CUDA implementation using __dp4a intrinsic for 4-way SIMD integer dot product. 8x faster than naive.",
+  "definition": "gemm_q4_0_q8_1_w4a8",
+  "author": "quant-gemm-from-scratch",
+  "tags": [
+    "implementation:dp4a",
+    "hardware:cuda",
+    "optimization:simd",
+    "requires:sm_61+"
+  ],
+  "spec": {
+    "language": "cuda",
+    "target_hardware": ["sm_61", "sm_70", "sm_75", "sm_80", "sm_86", "sm_89", "sm_90"],
+    "entry_point": "include/gemm_cuda_dp4a.cuh::gemm_q4_0_q8_1_dp4a",
+    "dependencies": ["cuda>=11.0", "curand"],
+    "destination_passing_style": true,
+    "min_compute_capability": "6.1"
+  },
+  "performance": {
+    "estimated_tflops": 1.2,
+    "speedup_vs_naive": "8x",
+    "optimization_level": 3
+  },
+  "optimizations": [
+    "__dp4a intrinsic: 4 multiply-add ops in single instruction",
+    "INT8/INT32 compute path",
+    "Better instruction throughput"
+  ],
+  "dp4a_spec": {
+    "instruction": "__dp4a(a, b, c)",
+    "description": "Computes c + dot(a[0:3], b[0:3]) where a,b are 4 packed int8",
+    "throughput": "1 instruction = 4 MAD operations"
+  },
+  "sources": [
+    {
+      "path": "include/gemm_cuda_dp4a.cuh",
+      "description": "DP4A optimized CUDA kernel"
+    }
+  ]
+}

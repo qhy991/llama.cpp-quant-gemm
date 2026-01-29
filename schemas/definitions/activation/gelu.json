@@ -1,0 +1,41 @@
+{
+  "name": "gelu_h4096",
+  "description": "GELU (Gaussian Error Linear Unit) activation function. Smooth approximation of ReLU used in BERT, GPT, and other transformers.",
+  "op_type": "gelu",
+  "tags": [
+    "status:verified",
+    "model:gpt-compatible",
+    "activation:gelu"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch/sequence dimension"
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 4096,
+      "description": "Hidden dimension"
+    }
+  },
+  "inputs": {
+    "x": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float32",
+      "description": "Input tensor"
+    }
+  },
+  "outputs": {
+    "y": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float32",
+      "description": "Output tensor: y = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))"
+    }
+  },
+  "variants": {
+    "exact": "GELU(x) = x * Φ(x) where Φ is CDF of standard normal",
+    "tanh_approx": "0.5 * x * (1 + tanh(sqrt(2/π) * (x + 0.044715 * x³)))",
+    "fast": "x * sigmoid(1.702 * x)"
+  },
+  "reference": "import torch\nimport math\n\ndef run(x):\n    # GELU with tanh approximation (most common)\n    sqrt_2_over_pi = math.sqrt(2.0 / math.pi)\n    return 0.5 * x * (1.0 + torch.tanh(sqrt_2_over_pi * (x + 0.044715 * x.pow(3))))"
+}

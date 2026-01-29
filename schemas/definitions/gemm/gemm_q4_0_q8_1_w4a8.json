@@ -1,0 +1,97 @@
+{
+  "name": "gemm_q4_0_q8_1_w4a8",
+  "description": "W4A8 quantized GEMM with Q4_0 weights and Q8_1 activations. Core quantized GEMM with compensation formula for llama.cpp compatibility.",
+  "op_type": "gemm_q4_0_q8_1",
+  "tags": [
+    "status:verified",
+    "quantization:w4a8",
+    "format:q4_0_q8_1",
+    "stage:step4",
+    "model:llama-compatible",
+    "compensation:required"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch/sequence dimension"
+    },
+    "N": {
+      "type": "var",
+      "description": "Output features"
+    },
+    "K": {
+      "type": "var",
+      "description": "Input features (must be multiple of 32)"
+    },
+    "QK": {
+      "type": "const",
+      "value": 32,
+      "description": "Block size for both Q4_0 and Q8_1"
+    }
+  },
+  "constraints": [
+    "K % QK == 0"
+  ],
+  "inputs": {
+    "A_q8_1": {
+      "shape": ["M", "K/QK"],
+      "dtype": "q8_1",
+      "description": "Q8_1 quantized activation blocks. Each block: {half2 ds, int8_t qs[32]}"
+    },
+    "B_q4_0": {
+      "shape": ["N", "K/QK"],
+      "dtype": "q4_0",
+      "description": "Q4_0 quantized weight blocks. Each block: {half d, uint8_t qs[16]}"
+    }
+  },
+  "outputs": {
+    "C": {
+      "shape": ["M", "N"],
+      "dtype": "float32",
+      "description": "Output matrix"
+    }
+  },
+  "quantization_spec": {
+    "q4_0": {
+      "block_size": 32,
+      "bytes_per_block": 18,
+      "bits_per_element": 4.5,
+      "structure": {
+        "d": {"dtype": "float16", "bytes": 2, "description": "Scale factor"},
+        "qs": {"dtype": "uint8", "count": 16, "bytes": 16, "description": "Packed 4-bit values"}
+      },
+      "quantize": "d = max(|x|) / 7.0; q = round(x / d) + 8",
+      "dequantize": "x = (q - 8) * d"
+    },
+    "q8_1": {
+      "block_size": 32,
+      "bytes_per_block": 36,
+      "bits_per_element": 9,
+      "structure": {
+        "ds": {"dtype": "half2", "bytes": 4, "description": "Packed (scale, sum) as half2"},
+        "qs": {"dtype": "int8", "count": 32, "bytes": 32, "description": "8-bit quantized values"}
+      },
+      "quantize": "d = max(|x|) / 127.0; q = round(x / d); s = sum(x)",
+      "dequantize": "x = q * d",
+      "note": "sum field stores original value sum for compensation"
+    }
+  },
+  "compensation_formula": {
+    "description": "Q4_0 uses offset +8 encoding, requiring compensation during dot product",
+    "formula": "result = d_w × (d_a × sumi - 8 × s_a)",
+    "variables": {
+      "d_w": "Q4_0 weight scale",
+      "d_a": "Q8_1 activation scale",
+      "sumi": "Integer dot product: Σ q_w[i] × q_a[i]",
+      "s_a": "Sum of original activation values (stored in Q8_1)"
+    },
+    "derivation": [
+      "Q4_0: x_w = (q_w - 8) × d_w",
+      "Q8_1: x_a = q_a × d_a, with s = Σ x_a stored",
+      "Dot product: Σ x_w × x_a = Σ (q_w - 8) × d_w × q_a × d_a",
+      "           = d_w × d_a × (Σ q_w × q_a - 8 × Σ q_a)",
+      "Since Σ q_a × d_a ≈ s_a, we get: d_w × (d_a × sumi - 8 × s_a)"
+    ]
+  },
+  "reference": "import torch\n\ndef dot_q4_0_q8_1(w_block, a_block):\n    \"\"\"Compute dot product of Q4_0 weight and Q8_1 activation blocks with compensation\"\"\"\n    d_w = w_block.d  # Q4_0 scale\n    d_a = a_block.ds.x  # Q8_1 scale (first element of half2)\n    s_a = a_block.ds.y  # Q8_1 sum (second element of half2)\n    \n    # Integer dot product\n    sumi = 0\n    for i in range(16):\n        q_w0 = w_block.qs[i] & 0x0F  # Lower 4 bits\n        q_w1 = (w_block.qs[i] >> 4) & 0x0F  # Upper 4 bits\n        q_a0 = a_block.qs[i]\n        q_a1 = a_block.qs[i + 16]\n        sumi += q_w0 * q_a0 + q_w1 * q_a1\n    \n    # Apply compensation formula\n    result = d_w * (d_a * sumi - 8.0 * s_a)\n    return result\n\ndef run(A_q8_1, B_q4_0):\n    M, num_blocks_a = A_q8_1.shape\n    N, num_blocks_b = B_q4_0.shape\n    assert num_blocks_a == num_blocks_b\n    \n    C = torch.zeros(M, N, dtype=torch.float32)\n    for m in range(M):\n        for n in range(N):\n            acc = 0.0\n            for b in range(num_blocks_a):\n                acc += dot_q4_0_q8_1(B_q4_0[n, b], A_q8_1[m, b])\n            C[m, n] = acc\n    return C"
+}
