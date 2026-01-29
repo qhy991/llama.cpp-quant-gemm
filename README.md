@@ -2,6 +2,36 @@
 
 一个完整的教程项目，从基础到高级，逐步实现符合 llama.cpp 规格的量化矩阵乘法（Quantized GEMM）算子。
 
+> 📚 **[完整文档索引](docs/README.md)** | 🧪 **[测试指南](docs/guides/TESTING_GUIDE.md)** | 🔗 **[集成指南](docs/guides/INTEGRATION_GUIDE.md)**
+
+---
+
+## 🚀 快速开始
+
+```bash
+# 克隆项目
+git clone <repo-url>
+cd quant-gemm-from-scratch
+
+# 编译
+mkdir build && cd build
+cmake .. -DCMAKE_CUDA_ARCHITECTURES=86
+make -j
+
+# 运行测试
+./bin/unit/test_gemm_all_quants
+```
+
+**预期输出**:
+```
+[GEMM_Q4_0_Q8_1] PASS ✓ (Error: 0.465%)
+[GEMM_Q4_1_Q8_1] PASS ✓ (Error: 0.398%)
+[GEMM_Q5_0_Q8_1] PASS ✓ (Error: 0.234%)
+[GEMM_Q5_1_Q8_1] PASS ✓ (Error: 0.189%)
+```
+
+---
+
 ## 📖 项目简介
 
 本项目是一个**循序渐进的教学项目**，旨在帮助深入理解量化矩阵乘法的实现原理和优化技术。
