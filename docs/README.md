@@ -10,7 +10,9 @@ docs/
 ├── guides/                      # 使用指南
 │   ├── GETTING_STARTED.md      # 快速开始
 │   ├── TESTING_GUIDE.md        # 测试指南
-│   └── INTEGRATION_GUIDE.md    # 集成指南
+│   ├── INTEGRATION_GUIDE.md    # 集成指南
+│   ├── CUDA-GEMM-BENCHMARK-TUTORIAL.md  # CUDA GEMM 性能测试教程
+│   └── QUICK-REFERENCE.md      # 快速参考指南
 ├── analysis/                    # 技术分析
 │   ├── GPU_REFERENCE_IMPLEMENTATION_ANALYSIS.md
 │   ├── TESTING_METHOD_ANALYSIS.md
@@ -22,7 +24,8 @@ docs/
 │   └── INTEGRATION_TEST_REPORT.md
 └── testing/                     # 测试相关
     ├── TEST_METHODOLOGY.md
-    └── VERIFICATION_STRATEGY.md
+    ├── VERIFICATION_STRATEGY.md
+    └── CUDA-12.8-TEST-LOG.md   # CUDA 12.8 完整测试日志
 ```
 
 ---
@@ -33,6 +36,11 @@ docs/
 - [快速开始](guides/GETTING_STARTED.md) - 5分钟上手
 - [项目架构](../PROJECT_ARCHITECTURE.md) - 理解项目结构
 - [算子列表](../OPERATOR_LIST.md) - 支持的量化格式
+
+### 性能测试 🆕
+- [CUDA GEMM 性能测试教程](guides/CUDA-GEMM-BENCHMARK-TUTORIAL.md) - 完整的性能测试教程
+- [快速参考指南](guides/QUICK-REFERENCE.md) - 常用命令速查
+- [CUDA 12.8 测试日志](testing/CUDA-12.8-TEST-LOG.md) - 详细测试输出记录
 
 ### 测试验证
 - [测试指南](guides/TESTING_GUIDE.md) - 如何运行测试
@@ -75,6 +83,7 @@ docs/
 
 | 优化技术 | 文档 | 加速比 |
 |----------|------|--------|
+| llama.cpp 优化 | [性能测试教程](guides/CUDA-GEMM-BENCHMARK-TUTORIAL.md) | ~110x |
 | DP4A | [DP4A教程](../tutorials/06-dp4a-optimization/) | ~4x |
 | Tiling | [Tiling教程](../tutorials/03-gemm-tiled/) | ~2x |
 | Vectorization | [代码示例](../kernels/gemm/gemm_cuda_dp4a.cuh) | ~1.5x |
@@ -100,6 +109,12 @@ docs/
 
 ### "GPU 参考实现是什么？"
 → [GPU参考实现分析](analysis/GPU_REFERENCE_IMPLEMENTATION_ANALYSIS.md)
+
+### "如何测试 llama.cpp 的性能？" 🆕
+→ [CUDA GEMM 性能测试教程](guides/CUDA-GEMM-BENCHMARK-TUTORIAL.md)
+
+### "llama.cpp 的优化效果如何？" 🆕
+→ [CUDA 12.8 测试日志](testing/CUDA-12.8-TEST-LOG.md) - 查看 8.83 TFLOPS 的测试结果
 
 ---
 

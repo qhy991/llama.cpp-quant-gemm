@@ -2,7 +2,7 @@
 
 一个完整的教程项目，从基础到高级，逐步实现符合 llama.cpp 规格的量化矩阵乘法（Quantized GEMM）算子。
 
-> 📚 **[完整文档索引](docs/README.md)** | 🧪 **[测试指南](docs/guides/TESTING_GUIDE.md)** | 🔗 **[集成指南](docs/guides/INTEGRATION_GUIDE.md)**
+> 📚 **[完整文档索引](docs/README.md)** | 🧪 **[测试指南](docs/guides/TESTING_GUIDE.md)** | 🔗 **[集成指南](docs/guides/INTEGRATION_GUIDE.md)** | ⚡ **[性能对比报告](docs/reports/LLAMA_CPP_PERFORMANCE_COMPARISON.md)** 🆕
 
 ---
 
