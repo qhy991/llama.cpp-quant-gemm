@@ -24,6 +24,9 @@ __pycache__/
 *.py[cod]
 *.class
 *.pyc
+*.egg-info/
+dist/
+*.eggs/
 
 # CUDA
 *.ptx
