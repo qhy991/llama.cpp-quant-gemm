@@ -7,6 +7,7 @@
 ```
 docs/
 ├── README.md                    # 本文件 - 文档索引
+├── TASK_TEMPLATE_FRAMEWORK.md  # 任务模板框架和通用设计 🆕
 ├── guides/                      # 使用指南
 │   ├── GETTING_STARTED.md      # 快速开始
 │   ├── TESTING_GUIDE.md        # 测试指南
@@ -51,6 +52,7 @@ docs/
 - [量化格式修复文档](analysis/QUANTIZATION_FORMATS_FIX_DOCUMENTATION.md) - Q4/Q5 修复过程
 - [GPU参考实现分析](analysis/GPU_REFERENCE_IMPLEMENTATION_ANALYSIS.md) - 与 llama.cpp 对比
 - [Kernel测试框架分析](analysis/KERNEL_TEST_FRAMEWORK_ANALYSIS.md) - 测试框架设计
+- [任务模板框架](TASK_TEMPLATE_FRAMEWORK.md) - LLM任务描述模板和通用框架设计 🆕
 
 ### 集成使用
 - [集成指南](guides/INTEGRATION_GUIDE.md) - 如何集成到 llama.cpp
@@ -115,6 +117,9 @@ docs/
 
 ### "llama.cpp 的优化效果如何？" 🆕
 → [CUDA 12.8 测试日志](testing/CUDA-12.8-TEST-LOG.md) - 查看 8.83 TFLOPS 的测试结果
+
+### "如何设计通用的GEMM实现任务模板？" 🆕
+→ [任务模板框架](TASK_TEMPLATE_FRAMEWORK.md) - 支持多种量化类型组合的参数化模板
 
 ---
 
