@@ -257,3 +257,97 @@ torch::Tensor gemm_q4_0_q8_1_cuda(
 
     return output;
 }
+
+// ============================================================================
+// W4A16: Q4_0 weights + FP32 activations
+// ============================================================================
+
+/**
+ * Q4_0 weights + FP32 activations GEMM kernel
+ * Weight: [N, K/32, 18] uint8 (Q4_0 quantized)
+ * Activation: [M, K] float32
+ * Output: [M, N] float32
+ */
+__global__ void gemm_q4_0_fp32_kernel(
+    const uint8_t* __restrict__ weight,    // [N, K/32, 18]
+    const float* __restrict__ activation,  // [M, K]
+    float* __restrict__ output,            // [M, N]
+    int M, int N, int K
+) {
+    // Thread mapping: 2D grid for output matrix
+    int m = blockIdx.y * blockDim.y + threadIdx.y;  // Row (0 to M-1)
+    int n = blockIdx.x * blockDim.x + threadIdx.x;  // Col (0 to N-1)
+
+    if (m >= M || n >= N) return;
+
+    float sum = 0.0f;
+    int num_blocks = K / QK4_0;
+
+    // Iterate over K dimension in blocks
+    for (int kb = 0; kb < num_blocks; ++kb) {
+        // Weight layout: [N, K/32, 18] -> row-major
+        // Access weight[n, kb, :]
+        long long offset = (long long)(n * num_blocks + kb) * BLOCK_Q4_0_BYTES;
+
+        // Read scale (first 2 bytes)
+        const uint8_t* block_ptr = weight + offset;
+        half scale_h = *reinterpret_cast<const half*>(block_ptr);
+        float scale = __half2float(scale_h);
+
+        // Read and dequantize 4-bit values (bytes 2-17)
+        const uint8_t* data_ptr = block_ptr + 2;
+        int k_start = kb * QK4_0;
+
+        // Process 32 values in the block (16 bytes, 2 values per byte)
+        // Q4_0 packing: byte[i] = weight[i] (low nibble) | weight[i+16] (high nibble)
+        for (int i = 0; i < 16; i++) {
+            uint8_t packed = data_ptr[i];
+
+            // Low nibble -> weight[i]
+            uint8_t q0 = packed & 0x0F;
+            float w0 = (float(q0) - 8.0f) * scale;
+            sum += activation[m * K + (k_start + i)] * w0;
+
+            // High nibble -> weight[i + 16]
+            uint8_t q1 = packed >> 4;
+            float w1 = (float(q1) - 8.0f) * scale;
+            sum += activation[m * K + (k_start + i + 16)] * w1;
+        }
+    }
+
+    // Output is [M, N] (row-major: m * N + n)
+    output[m * N + n] = sum;
+}
+
+torch::Tensor gemm_q4_0_fp32_cuda(
+    torch::Tensor weight_q,
+    torch::Tensor activation,
+    int M, int N, int K
+) {
+    // Create output tensor: [M, N]
+    auto options = torch::TensorOptions()
+        .dtype(torch::kFloat32)
+        .device(weight_q.device());
+    torch::Tensor output = torch::empty({M, N}, options);
+
+    // Get raw pointers
+    const uint8_t* weight_ptr = weight_q.data_ptr<uint8_t>();
+    const float* activation_ptr = activation.data_ptr<float>();
+    float* output_ptr = output.data_ptr<float>();
+
+    // Launch kernel: output is [M, N]
+    dim3 blockDim(32, 32);
+    dim3 gridDim((N + blockDim.x - 1) / blockDim.x, (M + blockDim.y - 1) / blockDim.y);
+
+    gemm_q4_0_fp32_kernel<<<gridDim, blockDim>>>(
+        weight_ptr, activation_ptr, output_ptr, M, N, K
+    );
+
+    // Check for errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        TORCH_CHECK(false, "CUDA kernel error: ", cudaGetErrorString(err));
+    }
+
+    return output;
+}
