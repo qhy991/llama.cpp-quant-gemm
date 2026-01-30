@@ -319,6 +319,115 @@ __global__ void gemm_q4_0_fp32_kernel(
     output[m * N + n] = sum;
 }
 
+/**
+ * Optimized Q4_0 weights + FP32 activations GEMM kernel (Version 2)
+ *
+ * Optimizations:
+ * 1. Vectorized memory access using float4
+ * 2. Reduced memory transactions from 32 to 8 per block
+ *
+ * Weight: [N, K/32, 18] uint8 (Q4_0 quantized)
+ * Activation: [M, K] float32
+ * Output: [M, N] float32
+ */
+__global__ void gemm_q4_0_fp32_kernel_v2(
+    const uint8_t* __restrict__ weight,    // [N, K/32, 18]
+    const float* __restrict__ activation,  // [M, K]
+    float* __restrict__ output,            // [M, N]
+    int M, int N, int K
+) {
+    // Thread mapping: 2D grid for output matrix
+    int m = blockIdx.y * blockDim.y + threadIdx.y;  // Row (0 to M-1)
+    int n = blockIdx.x * blockDim.x + threadIdx.x;  // Col (0 to N-1)
+
+    if (m >= M || n >= N) return;
+
+    float sum = 0.0f;
+    int num_blocks = K / QK4_0;
+
+    // Iterate over K dimension in blocks of 32
+    for (int kb = 0; kb < num_blocks; ++kb) {
+        // Weight layout: [N, K/32, 18] -> row-major
+        // Access weight[n, kb, :]
+        long long offset = (long long)(n * num_blocks + kb) * BLOCK_Q4_0_BYTES;
+
+        // Read scale (first 2 bytes as half)
+        const uint8_t* block_ptr = weight + offset;
+        half scale_h = *reinterpret_cast<const half*>(block_ptr);
+        float scale = __half2float(scale_h);
+
+        // Read and dequantize 4-bit values (bytes 2-17)
+        const uint8_t* data_ptr = block_ptr + 2;
+        int k_start = kb * QK4_0;
+
+        // Vectorized approach: Process 4 elements at a time using float4
+        // Process first 16 elements (low nibbles)
+        for (int i = 0; i < 16; i += 4) {
+            // Read 4 packed bytes (contains 8 quantized values)
+            uint8_t packed0 = data_ptr[i];
+            uint8_t packed1 = data_ptr[i + 1];
+            uint8_t packed2 = data_ptr[i + 2];
+            uint8_t packed3 = data_ptr[i + 3];
+
+            // Extract low nibbles (weights at positions i, i+1, i+2, i+3)
+            uint8_t q0 = packed0 & 0x0F;
+            uint8_t q1 = packed1 & 0x0F;
+            uint8_t q2 = packed2 & 0x0F;
+            uint8_t q3 = packed3 & 0x0F;
+
+            // Dequantize
+            float w0 = (float(q0) - 8.0f) * scale;
+            float w1 = (float(q1) - 8.0f) * scale;
+            float w2 = (float(q2) - 8.0f) * scale;
+            float w3 = (float(q3) - 8.0f) * scale;
+
+            // Vectorized activation read (float4)
+            const float* act_ptr = activation + m * K + k_start + i;
+            float4 act_vec = *reinterpret_cast<const float4*>(act_ptr);
+
+            // Accumulate
+            sum += act_vec.x * w0;
+            sum += act_vec.y * w1;
+            sum += act_vec.z * w2;
+            sum += act_vec.w * w3;
+        }
+
+        // Process last 16 elements (high nibbles)
+        for (int i = 0; i < 16; i += 4) {
+            // Read 4 packed bytes
+            uint8_t packed0 = data_ptr[i];
+            uint8_t packed1 = data_ptr[i + 1];
+            uint8_t packed2 = data_ptr[i + 2];
+            uint8_t packed3 = data_ptr[i + 3];
+
+            // Extract high nibbles (weights at positions i+16, i+17, i+18, i+19)
+            uint8_t q0 = packed0 >> 4;
+            uint8_t q1 = packed1 >> 4;
+            uint8_t q2 = packed2 >> 4;
+            uint8_t q3 = packed3 >> 4;
+
+            // Dequantize
+            float w0 = (float(q0) - 8.0f) * scale;
+            float w1 = (float(q1) - 8.0f) * scale;
+            float w2 = (float(q2) - 8.0f) * scale;
+            float w3 = (float(q3) - 8.0f) * scale;
+
+            // Vectorized activation read (float4)
+            const float* act_ptr = activation + m * K + k_start + 16 + i;
+            float4 act_vec = *reinterpret_cast<const float4*>(act_ptr);
+
+            // Accumulate
+            sum += act_vec.x * w0;
+            sum += act_vec.y * w1;
+            sum += act_vec.z * w2;
+            sum += act_vec.w * w3;
+        }
+    }
+
+    // Output is [M, N] (row-major: m * N + n)
+    output[m * N + n] = sum;
+}
+
 torch::Tensor gemm_q4_0_fp32_cuda(
     torch::Tensor weight_q,
     torch::Tensor activation,
@@ -339,7 +448,8 @@ torch::Tensor gemm_q4_0_fp32_cuda(
     dim3 blockDim(32, 32);
     dim3 gridDim((N + blockDim.x - 1) / blockDim.x, (M + blockDim.y - 1) / blockDim.y);
 
-    gemm_q4_0_fp32_kernel<<<gridDim, blockDim>>>(
+    // Use optimized kernel (v2) for better performance
+    gemm_q4_0_fp32_kernel_v2<<<gridDim, blockDim>>>(
         weight_ptr, activation_ptr, output_ptr, M, N, K
     );
 
