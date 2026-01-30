@@ -1,0 +1,69 @@
+{
+  "name": "w4a16_q4_0_fp32_n4096_k4096",
+  "op_type": "quant_gemm",
+  "variant": "W4A16",
+  "description": "Quantized GEMM with Q4_0 weights and FP32 activations. C = A @ B.T where A is FP32 activation and B is Q4_0 quantized weight. Simpler than W4A8 as no activation quantization needed.",
+  "tags": [
+    "status:verified",
+    "framework:llama.cpp",
+    "quantization:q4_0"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch dimension (batch_size * seq_len)"
+    },
+    "N": {
+      "type": "const",
+      "value": 4096,
+      "description": "Output features"
+    },
+    "K": {
+      "type": "const",
+      "value": 4096,
+      "description": "Input features (must be multiple of 32)"
+    },
+    "block_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Quantization block size"
+    }
+  },
+  "inputs": {
+    "activation": {
+      "shape": ["M", "K"],
+      "dtype": "float32",
+      "description": "FP32 activation tensor"
+    },
+    "weight": {
+      "shape": ["N", "K/32"],
+      "dtype": "block_q4_0",
+      "description": "Q4_0 quantized weight tensor. Each block is 18 bytes"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "N"],
+      "dtype": "float32",
+      "description": "Output tensor in FP32"
+    }
+  },
+  "constraints": [
+    "K % 32 == 0",
+    "sizeof(block_q4_0) == 18"
+  ],
+  "types": {
+    "block_q4_0": {
+      "size": 18,
+      "fields": [
+        {"name": "d", "dtype": "half", "size": 2, "description": "Scale factor"},
+        {"name": "qs", "dtype": "uint8[16]", "size": 16, "description": "32 x 4-bit values packed"}
+      ]
+    }
+  },
+  "formula": {
+    "dequantize": "w[i] = (qs[i] - 8) * d",
+    "gemm": "C[m,n] = sum_k(A[m,k] * dequant(B[n,k]))"
+  },
+  "reference": "import torch\nimport struct\n\ndef dequantize_q4_0_block(block_bytes):\n    \"\"\"Dequantize block_q4_0 (18 bytes) to 32 float values\"\"\"\n    d = struct.unpack('<e', block_bytes[:2])[0]  # half -> float\n    qs = block_bytes[2:18]\n    values = []\n    for i in range(16):\n        q_low = (qs[i] & 0x0F) - 8\n        q_high = (qs[i] >> 4) - 8\n        values.append(q_low * d)\n        values.append(q_high * d)\n    return torch.tensor(values, dtype=torch.float32)\n\n@torch.no_grad()\ndef run(activation, weight):\n    \"\"\"\n    Reference implementation for W4A16 GEMM.\n    activation: [M, K] float32\n    weight: [N, K/32] as block_q4_0\n    returns: [M, N] float32\n    \"\"\"\n    M, K = activation.shape\n    N = weight.shape[0]\n    num_blocks = K // 32\n    \n    # Dequantize all weights\n    weight_dequant = torch.zeros(N, K, dtype=torch.float32)\n    for n in range(N):\n        for b in range(num_blocks):\n            block_values = dequantize_q4_0_block(weight[n, b])\n            weight_dequant[n, b*32:(b+1)*32] = block_values\n    \n    # Standard GEMM\n    output = torch.matmul(activation, weight_dequant.T)\n    return output"
+}

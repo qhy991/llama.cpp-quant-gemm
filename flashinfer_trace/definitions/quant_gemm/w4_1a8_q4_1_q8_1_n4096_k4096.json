@@ -1,0 +1,80 @@
+{
+  "name": "w4_1a8_q4_1_q8_1_n4096_k4096",
+  "op_type": "quant_gemm",
+  "variant": "W4_1A8",
+  "description": "Quantized GEMM with Q4_1 (asymmetric) weights and Q8_1 activations. Q4_1 uses min-max quantization with separate minimum value offset.",
+  "tags": [
+    "status:verified",
+    "framework:llama.cpp",
+    "quantization:q4_1",
+    "quantization:q8_1"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch dimension"
+    },
+    "N": {
+      "type": "const",
+      "value": 4096,
+      "description": "Output features"
+    },
+    "K": {
+      "type": "const",
+      "value": 4096,
+      "description": "Input features"
+    },
+    "block_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Quantization block size"
+    }
+  },
+  "inputs": {
+    "activation": {
+      "shape": ["M", "K/32"],
+      "dtype": "block_q8_1",
+      "description": "Q8_1 quantized activation (36 bytes per block)"
+    },
+    "weight": {
+      "shape": ["N", "K/32"],
+      "dtype": "block_q4_1",
+      "description": "Q4_1 quantized weight (20 bytes per block)"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "N"],
+      "dtype": "float32"
+    }
+  },
+  "constraints": [
+    "K % 32 == 0",
+    "sizeof(block_q4_1) == 20",
+    "sizeof(block_q8_1) == 36"
+  ],
+  "types": {
+    "block_q4_1": {
+      "size": 20,
+      "fields": [
+        {"name": "d", "dtype": "half", "size": 2, "description": "Scale factor"},
+        {"name": "m", "dtype": "half", "size": 2, "description": "Minimum value offset"},
+        {"name": "qs", "dtype": "uint8[16]", "size": 16, "description": "32 x 4-bit values packed"}
+      ],
+      "quantization": "asymmetric",
+      "formula": "q = round((x - m) / d), x = q * d + m"
+    },
+    "block_q8_1": {
+      "size": 36,
+      "fields": [
+        {"name": "ds", "dtype": "half2", "size": 4, "description": "d and s packed"},
+        {"name": "qs", "dtype": "int8[32]", "size": 32, "description": "32 x 8-bit values"}
+      ]
+    }
+  },
+  "formula": {
+    "dot_product": "result = d_w * d_a * sumi + m_w * s_a",
+    "explanation": "Q4_1 uses asymmetric quantization with minimum offset m. The m*s term compensates for the offset."
+  },
+  "reference": "import torch\nimport struct\n\ndef vec_dot_q4_1_q8_1(w_block, a_block):\n    \"\"\"Compute dot product of Q4_1 weight and Q8_1 activation\"\"\"\n    # Unpack Q4_1 weight (20 bytes)\n    d_w = struct.unpack('<e', w_block[:2])[0]\n    m_w = struct.unpack('<e', w_block[2:4])[0]\n    w_qs = w_block[4:20]\n    \n    # Unpack Q8_1 activation (36 bytes)\n    ds = struct.unpack('<ee', a_block[:4])\n    d_a, s_a = ds[0], ds[1]\n    a_qs = struct.unpack('<32b', a_block[4:36])\n    \n    # Integer dot product (no offset subtraction needed for Q4_1)\n    sumi = 0\n    for i in range(16):\n        q_w_low = w_qs[i] & 0x0F\n        q_w_high = w_qs[i] >> 4\n        sumi += q_w_low * a_qs[i]\n        sumi += q_w_high * a_qs[i + 16]\n    \n    # Q4_1 formula: result = d_w * d_a * sumi + m_w * s_a\n    return d_w * d_a * sumi + m_w * s_a\n\n@torch.no_grad()\ndef run(activation, weight):\n    M = activation.shape[0]\n    N = weight.shape[0]\n    num_blocks = activation.shape[1]\n    \n    output = torch.zeros(M, N, dtype=torch.float32)\n    \n    for m in range(M):\n        for n in range(N):\n            acc = 0.0\n            for b in range(num_blocks):\n                acc += vec_dot_q4_1_q8_1(weight[n, b], activation[m, b])\n            output[m, n] = acc\n    \n    return output"
+}

@@ -1,0 +1,78 @@
+{
+  "name": "w4a8_q4_0_q8_1_n4096_k4096",
+  "op_type": "quant_gemm",
+  "variant": "W4A8",
+  "description": "Quantized GEMM with Q4_0 weights and Q8_1 activations. C = A @ B.T where A is Q8_1 quantized activation and B is Q4_0 quantized weight. Compatible with llama.cpp mmq kernels.",
+  "tags": [
+    "status:verified",
+    "framework:llama.cpp",
+    "quantization:q4_0",
+    "quantization:q8_1"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch dimension (batch_size * seq_len)"
+    },
+    "N": {
+      "type": "const",
+      "value": 4096,
+      "description": "Output features (model hidden_size)"
+    },
+    "K": {
+      "type": "const",
+      "value": 4096,
+      "description": "Input features (must be multiple of 32)"
+    },
+    "block_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Quantization block size"
+    }
+  },
+  "inputs": {
+    "activation": {
+      "shape": ["M", "K/32"],
+      "dtype": "block_q8_1",
+      "description": "Q8_1 quantized activation tensor. Each block is 36 bytes (half2 ds + int8[32])"
+    },
+    "weight": {
+      "shape": ["N", "K/32"],
+      "dtype": "block_q4_0",
+      "description": "Q4_0 quantized weight tensor. Each block is 18 bytes (half d + uint8[16])"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "N"],
+      "dtype": "float32",
+      "description": "Output tensor in FP32"
+    }
+  },
+  "constraints": [
+    "K % 32 == 0",
+    "sizeof(block_q4_0) == 18",
+    "sizeof(block_q8_1) == 36"
+  ],
+  "types": {
+    "block_q4_0": {
+      "size": 18,
+      "fields": [
+        {"name": "d", "dtype": "half", "size": 2, "description": "Scale factor"},
+        {"name": "qs", "dtype": "uint8[16]", "size": 16, "description": "32 x 4-bit values packed"}
+      ]
+    },
+    "block_q8_1": {
+      "size": 36,
+      "fields": [
+        {"name": "ds", "dtype": "half2", "size": 4, "description": "d (scale) in low half, s (sum) in high half"},
+        {"name": "qs", "dtype": "int8[32]", "size": 32, "description": "32 x 8-bit signed values"}
+      ]
+    }
+  },
+  "formula": {
+    "dot_product": "result = d_w * (d_a * sumi - 8.0f * s_a)",
+    "explanation": "Q4_0 stores values with +8 offset. Compensation term -8*s_a corrects for this offset in the dot product."
+  },
+  "reference": "import torch\nimport struct\n\ndef unpack_q4_0(block_bytes):\n    \"\"\"Unpack block_q4_0 (18 bytes) to 32 float values\"\"\"\n    d = struct.unpack('<e', block_bytes[:2])[0]  # half\n    qs = block_bytes[2:18]  # uint8[16]\n    values = []\n    for i in range(16):\n        q_low = (qs[i] & 0x0F) - 8\n        q_high = (qs[i] >> 4) - 8\n        values.append(q_low * d)\n        values.append(q_high * d)\n    return values\n\ndef unpack_q8_1(block_bytes):\n    \"\"\"Unpack block_q8_1 (36 bytes) to 32 float values and sum\"\"\"\n    ds = struct.unpack('<ee', block_bytes[:4])  # half2\n    d, s = ds[0], ds[1]\n    qs = struct.unpack('<32b', block_bytes[4:36])  # int8[32]\n    values = [q * d for q in qs]\n    return values, d, s\n\ndef vec_dot_q4_0_q8_1(w_block, a_block):\n    \"\"\"Compute dot product of Q4_0 weight block and Q8_1 activation block\"\"\"\n    # Unpack weight\n    d_w = struct.unpack('<e', w_block[:2])[0]\n    w_qs = w_block[2:18]\n    \n    # Unpack activation\n    ds = struct.unpack('<ee', a_block[:4])\n    d_a, s_a = ds[0], ds[1]\n    a_qs = struct.unpack('<32b', a_block[4:36])\n    \n    # Integer dot product (without offset subtraction)\n    sumi = 0\n    for i in range(16):\n        q_w_low = w_qs[i] & 0x0F\n        q_w_high = w_qs[i] >> 4\n        sumi += q_w_low * a_qs[i]\n        sumi += q_w_high * a_qs[i + 16]\n    \n    # Apply compensation formula\n    return d_w * (d_a * sumi - 8.0 * s_a)\n\n@torch.no_grad()\ndef run(activation, weight):\n    \"\"\"\n    Reference implementation for W4A8 GEMM.\n    activation: [M, K/32] as block_q8_1 (raw bytes or structured)\n    weight: [N, K/32] as block_q4_0 (raw bytes or structured)\n    returns: [M, N] float32\n    \"\"\"\n    M = activation.shape[0]\n    N = weight.shape[0]\n    num_blocks = activation.shape[1]\n    \n    output = torch.zeros(M, N, dtype=torch.float32)\n    \n    for m in range(M):\n        for n in range(N):\n            acc = 0.0\n            for b in range(num_blocks):\n                acc += vec_dot_q4_0_q8_1(\n                    weight[n, b],\n                    activation[m, b]\n                )\n            output[m, n] = acc\n    \n    return output"
+}

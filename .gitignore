@@ -19,6 +19,12 @@ bin/
 /test_simple_gemm
 /test_vec_dot
 
+# Test binaries in tests/ directory
+tests/benchmark_best
+tests/benchmark_warp_optimized
+tests/profile_kernel
+tests/test_correctness
+
 # Python
 __pycache__/
 *.py[cod]

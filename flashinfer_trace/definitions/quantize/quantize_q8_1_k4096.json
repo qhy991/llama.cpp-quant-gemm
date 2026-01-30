@@ -1,0 +1,67 @@
+{
+  "name": "quantize_q8_1_k4096",
+  "op_type": "quantize",
+  "variant": "q8_1",
+  "description": "Quantize FP32 tensor to Q8_1 format. Q8_1 is 8-bit symmetric quantization with precomputed sum for dot product compensation. Used for runtime activation quantization in W4A8 GEMM.",
+  "tags": [
+    "status:verified",
+    "framework:llama.cpp",
+    "quantization:q8_1",
+    "runtime:activation"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Number of rows (batch_size * seq_len)"
+    },
+    "K": {
+      "type": "const",
+      "value": 4096,
+      "description": "Number of columns (must be multiple of 32)"
+    },
+    "block_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Elements per quantization block"
+    }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["M", "K"],
+      "dtype": "float32",
+      "description": "FP32 tensor to quantize"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "K/32"],
+      "dtype": "block_q8_1",
+      "description": "Q8_1 quantized output (36 bytes per block)"
+    }
+  },
+  "constraints": [
+    "K % 32 == 0",
+    "sizeof(block_q8_1) == 36"
+  ],
+  "types": {
+    "block_q8_1": {
+      "size": 36,
+      "fields": [
+        {"name": "ds", "dtype": "half2", "size": 4, "description": "ds.x = d (scale), ds.y = s (sum of original values)"},
+        {"name": "qs", "dtype": "int8[32]", "size": 32, "description": "32 quantized 8-bit signed values"}
+      ]
+    }
+  },
+  "algorithm": {
+    "steps": [
+      "1. For each block of 32 elements:",
+      "2. Compute amax = max(|x[i]|) for i in block",
+      "3. Compute scale d = amax / 127.0",
+      "4. Compute sum s = Σ x[i] (sum of ORIGINAL values, critical!)",
+      "5. Quantize: q[i] = round(x[i] / d), clamp to [-128, 127]",
+      "6. Pack: ds = make_half2(d, s), qs = q"
+    ],
+    "why_sum": "The sum s is used in Q4_0×Q8_1 dot product to compensate for Q4_0's +8 offset. Formula: result = d_w * (d_a * sumi - 8 * s_a)"
+  },
+  "reference": "import torch\nimport struct\nimport numpy as np\n\ndef quantize_block_q8_1(values):\n    \"\"\"\n    Quantize 32 float values to block_q8_1 format.\n    Returns 36 bytes.\n    \"\"\"\n    assert len(values) == 32\n    values = np.array(values, dtype=np.float32)\n    \n    # Find scale\n    amax = np.max(np.abs(values))\n    d = amax / 127.0 if amax > 0 else 1.0\n    \n    # Compute sum of original values (CRITICAL for dot product)\n    s = np.sum(values)\n    \n    # Quantize\n    qs = np.round(values / d).astype(np.int8)\n    qs = np.clip(qs, -128, 127).astype(np.int8)\n    \n    # Pack to bytes\n    # ds: half2 (4 bytes) - d in low half, s in high half\n    d_half = struct.pack('<e', np.float16(d))\n    s_half = struct.pack('<e', np.float16(s))\n    ds_bytes = d_half + s_half\n    \n    # qs: int8[32] (32 bytes)\n    qs_bytes = qs.tobytes()\n    \n    return ds_bytes + qs_bytes\n\n@torch.no_grad()\ndef run(input_tensor):\n    \"\"\"\n    Quantize FP32 tensor to Q8_1.\n    input: [M, K] float32\n    output: [M, K/32] as block_q8_1 bytes\n    \"\"\"\n    M, K = input_tensor.shape\n    assert K % 32 == 0\n    num_blocks = K // 32\n    \n    input_np = input_tensor.numpy()\n    output_blocks = []\n    \n    for m in range(M):\n        row_blocks = []\n        for b in range(num_blocks):\n            block_values = input_np[m, b*32:(b+1)*32]\n            block_bytes = quantize_block_q8_1(block_values)\n            row_blocks.append(block_bytes)\n        output_blocks.append(row_blocks)\n    \n    return output_blocks"
+}
