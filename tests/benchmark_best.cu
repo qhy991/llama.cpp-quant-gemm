@@ -235,6 +235,9 @@ int main(int argc, char** argv) {
         M, N, K
     ));
 
+    // Note: Vectorized version has alignment issues, skipping for now
+    // TODO: Fix int4 alignment for block_q8_1 structure
+
     // Check compute capability for async copy (reuse prop from earlier)
     if (prop.major >= 8) {
         printf("\n[INFO] GPU supports async copy (SM %d.%d), testing async version...\n",
