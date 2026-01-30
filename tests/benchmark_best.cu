@@ -14,6 +14,7 @@
 #include "../kernels/gemm/gemm_quant_formats.cuh"
 #include "../kernels/gemm/gemm_warp_optimized.cuh"
 #include "../kernels/gemm/gemm_async_copy.cuh"
+#include "../kernels/gemm/gemm_vectorized.cuh"
 
 // ============================================================================
 // 辅助函数
@@ -235,8 +236,20 @@ int main(int argc, char** argv) {
         M, N, K
     ));
 
-    // Note: Vectorized version has alignment issues, skipping for now
-    // TODO: Fix int4 alignment for block_q8_1 structure
+    // Test vectorized versions
+    results.push_back(benchmark_kernel(
+        "Vectorized (Safe)",
+        gemm_q4_0_q8_1_vec_safe,
+        d_weight, d_activation, d_output, d_reference,
+        M, N, K
+    ));
+
+    results.push_back(benchmark_kernel(
+        "Vectorized (Float4)",
+        gemm_q4_0_q8_1_vec_float4,
+        d_weight, d_activation, d_output, d_reference,
+        M, N, K
+    ));
 
     // Check compute capability for async copy (reuse prop from earlier)
     if (prop.major >= 8) {
