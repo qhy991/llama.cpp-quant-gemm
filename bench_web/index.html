@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quant-GEMM Kernel Bench</title>
+    <style>
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-tertiary: #e9ecef;
+            --text-primary: #212529;
+            --text-secondary: #495057;
+            --text-muted: #6c757d;
+            --border-color: #dee2e6;
+            --accent-color: #0d6efd;
+            --accent-hover: #0b5ed7;
+            --code-bg: #f6f8fa;
+            --success-color: #198754;
+            --warning-color: #ffc107;
+            --tag-bg: #e7f1ff;
+            --tag-text: #0d6efd;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --text-primary: #e9ecef;
+            --text-secondary: #adb5bd;
+            --text-muted: #6c757d;
+            --border-color: #343a40;
+            --accent-color: #4dabf7;
+            --accent-hover: #74c0fc;
+            --code-bg: #0d1117;
+            --success-color: #40c057;
+            --warning-color: #fcc419;
+            --tag-bg: #1c3d5a;
+            --tag-text: #74c0fc;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Navigation */
+        .navbar {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar-brand {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--accent-color);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .navbar-brand svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .navbar-links {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        .navbar-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+
+        .navbar-links a:hover {
+            color: var(--accent-color);
+        }
+
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.5rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: flex;
+            min-height: calc(100vh - 60px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background-color: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            padding: 1.5rem;
+            position: sticky;
+            top: 60px;
+            height: calc(100vh - 60px);
+            overflow-y: auto;
+        }
+
+        .sidebar h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        /* Model filter */
+        .model-filter {
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+
+        .model-filter a {
+            display: inline-block;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+        }
+
+        .model-filter a:hover {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .model-filter a.active {
+            background-color: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        .kernel-list {
+            list-style: none;
+        }
+
+        .kernel-list li {
+            margin-bottom: 0.5rem;
+        }
+
+        .kernel-list a {
+            display: block;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .kernel-list a:hover {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .kernel-list a.active {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        /* Content Area */
+        .content {
+            flex: 1;
+            padding: 2rem 3rem;
+            max-width: 1000px;
+        }
+
+        /* Kernel Header */
+        .kernel-header {
+            margin-bottom: 2rem;
+        }
+
+        .kernel-name {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        }
+
+        .kernel-description {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background-color: var(--tag-bg);
+            color: var(--tag-text);
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .tag.status-verified {
+            background-color: rgba(25, 135, 84, 0.15);
+            color: var(--success-color);
+        }
+
+        .tag.status-experimental {
+            background-color: rgba(255, 193, 7, 0.15);
+            color: var(--warning-color);
+        }
+
+        /* Framework tags - blue */
+        .tag[data-type="framework"] {
+            background-color: rgba(13, 110, 253, 0.15);
+            color: var(--accent-color);
+        }
+
+        /* Source tags - purple */
+        .tag[data-type="source"] {
+            background-color: rgba(111, 66, 193, 0.15);
+            color: #6f42c1;
+        }
+
+        /* Layer tags - teal */
+        .tag[data-type="layer"] {
+            background-color: rgba(32, 201, 151, 0.15);
+            color: #20c997;
+        }
+
+        /* Quantization tags - orange */
+        .tag[data-type="quantization"] {
+            background-color: rgba(253, 126, 20, 0.15);
+            color: #fd7e14;
+        }
+
+        /* Data type tags - cyan */
+        .tag[data-type="dtype"] {
+            background-color: rgba(23, 162, 184, 0.15);
+            color: #17a2b8;
+        }
+
+        /* Model architecture tags */
+        .models-section {
+            margin-top: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .models-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .model-tag {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background-color: rgba(255, 193, 7, 0.15);
+            color: #f59f00;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        /* Layer type badge */
+        .layer-type {
+            margin-top: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .layer-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .layer-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+            color: var(--accent-color);
+        }
+
+        /* Tag legend */
+        .tag-legend {
+            margin-bottom: 1.5rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.4rem;
+            font-size: 0.75rem;
+        }
+
+        .legend-tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+
+        .legend-tag.tag-status {
+            background-color: rgba(25, 135, 84, 0.15);
+            color: var(--success-color);
+        }
+
+        .legend-tag.tag-framework {
+            background-color: rgba(13, 110, 253, 0.15);
+            color: var(--accent-color);
+        }
+
+        .legend-tag.tag-source {
+            background-color: rgba(111, 66, 193, 0.15);
+            color: #6f42c1;
+        }
+
+        .legend-tag.tag-layer {
+            background-color: rgba(32, 201, 151, 0.15);
+            color: #20c997;
+        }
+
+        .legend-tag.tag-quant {
+            background-color: rgba(253, 126, 20, 0.15);
+            color: #fd7e14;
+        }
+
+        .legend-tag.tag-dtype {
+            background-color: rgba(23, 162, 184, 0.15);
+            color: #17a2b8;
+        }
+
+        .legend-desc {
+            color: var(--text-secondary);
+        }
+
+        /* Section */
+        .section {
+            margin-bottom: 2rem;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .section-header {
+            padding: 1rem 1.25rem;
+            background-color: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-content {
+            padding: 1.25rem;
+        }
+
+        /* Axes Grid */
+        .axes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .axis-item {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 1rem;
+        }
+
+        .axis-name {
+            font-weight: 600;
+            font-family: 'SF Mono', Monaco, monospace;
+            color: var(--accent-color);
+            margin-bottom: 0.25rem;
+        }
+
+        .axis-value {
+            font-size: 1.25rem;
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .axis-type {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .axis-desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+
+        /* Tensor Table */
+        .tensor-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .tensor-table th,
+        .tensor-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tensor-table th {
+            background-color: var(--bg-tertiary);
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .tensor-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .tensor-name {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: var(--accent-color);
+        }
+
+        .tensor-shape {
+            font-family: 'SF Mono', Monaco, monospace;
+            background-color: var(--code-bg);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        .tensor-dtype {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: var(--success-color);
+        }
+
+        /* Type Definitions */
+        .type-def {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .type-def:last-child {
+            margin-bottom: 0;
+        }
+
+        .type-def-header {
+            padding: 0.75rem 1rem;
+            background-color: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .type-def-name {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        .type-def-size {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .type-def-body {
+            padding: 1rem;
+        }
+
+        .field-list {
+            list-style: none;
+        }
+
+        .field-list li {
+            display: flex;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.875rem;
+        }
+
+        .field-list li:last-child {
+            border-bottom: none;
+        }
+
+        .field-name {
+            font-family: 'SF Mono', Monaco, monospace;
+            width: 80px;
+            color: var(--accent-color);
+        }
+
+        .field-dtype {
+            font-family: 'SF Mono', Monaco, monospace;
+            width: 120px;
+            color: var(--success-color);
+        }
+
+        .field-desc {
+            color: var(--text-secondary);
+            flex: 1;
+        }
+
+        .type-meta {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.85rem;
+        }
+
+        .type-meta-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .type-meta-label {
+            color: var(--text-muted);
+            margin-right: 0.5rem;
+        }
+
+        .type-meta-value {
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        /* Constraints */
+        .constraints-list {
+            list-style: none;
+        }
+
+        .constraints-list li {
+            padding: 0.5rem 0.75rem;
+            background-color: var(--bg-primary);
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.875rem;
+        }
+
+        .constraints-list li:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Formula */
+        .formula-block {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .formula-block:last-child {
+            margin-bottom: 0;
+        }
+
+        .formula-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .formula-content {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1rem;
+            color: var(--accent-color);
+        }
+
+        .formula-explanation {
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* Code Block */
+        .code-block {
+            position: relative;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background-color: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+
+        .code-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+        }
+
+        .code-title svg {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.2s;
+        }
+
+        .code-block.collapsed .code-title svg {
+            transform: rotate(-90deg);
+        }
+
+        .code-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .copy-btn {
+            background: none;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        .copy-btn.copied {
+            background-color: var(--success-color);
+            border-color: var(--success-color);
+            color: white;
+        }
+
+        .code-content {
+            background-color: var(--code-bg);
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .code-block.collapsed .code-content {
+            display: none;
+        }
+
+        pre {
+            margin: 0;
+            padding: 1rem;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            white-space: pre;
+        }
+
+        /* Syntax Highlighting */
+        .keyword { color: #d63384; }
+        .string { color: #198754; }
+        .comment { color: #6c757d; font-style: italic; }
+        .function { color: #0d6efd; }
+        .number { color: #fd7e14; }
+
+        [data-theme="dark"] .keyword { color: #f472b6; }
+        [data-theme="dark"] .string { color: #86efac; }
+        [data-theme="dark"] .comment { color: #9ca3af; }
+        [data-theme="dark"] .function { color: #93c5fd; }
+        [data-theme="dark"] .number { color: #fdba74; }
+
+        [data-theme="dark"] .tag.status-verified {
+            background-color: rgba(64, 192, 87, 0.2);
+            color: var(--success-color);
+        }
+
+        [data-theme="dark"] .tag.status-experimental {
+            background-color: rgba(252, 196, 25, 0.2);
+            color: var(--warning-color);
+        }
+
+        [data-theme="dark"] .tag[data-type="framework"] {
+            background-color: rgba(77, 171, 247, 0.2);
+            color: var(--accent-color);
+        }
+
+        [data-theme="dark"] .tag[data-type="source"] {
+            background-color: rgba(158, 119, 198, 0.2);
+            color: #9e77c6;
+        }
+
+        [data-theme="dark"] .tag[data-type="layer"] {
+            background-color: rgba(72, 187, 120, 0.2);
+            color: #48bb78;
+        }
+
+        [data-theme="dark"] .tag[data-type="quantization"] {
+            background-color: rgba(251, 146, 60, 0.2);
+            color: #fb923c;
+        }
+
+        [data-theme="dark"] .tag[data-type="dtype"] {
+            background-color: rgba(34, 211, 238, 0.2);
+            color: #22d3ee;
+        }
+
+        [data-theme="dark"] .legend-tag.tag-status {
+            background-color: rgba(64, 192, 87, 0.2);
+            color: var(--success-color);
+        }
+
+        [data-theme="dark"] .legend-tag.tag-framework {
+            background-color: rgba(77, 171, 247, 0.2);
+            color: var(--accent-color);
+        }
+
+        [data-theme="dark"] .legend-tag.tag-source {
+            background-color: rgba(158, 119, 198, 0.2);
+            color: #9e77c6;
+        }
+
+        [data-theme="dark"] .legend-tag.tag-layer {
+            background-color: rgba(72, 187, 120, 0.2);
+            color: #48bb78;
+        }
+
+        [data-theme="dark"] .legend-tag.tag-quant {
+            background-color: rgba(251, 146, 60, 0.2);
+            color: #fb923c;
+        }
+
+        [data-theme="dark"] .legend-tag.tag-dtype {
+            background-color: rgba(34, 211, 238, 0.2);
+            color: #22d3ee;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .footer a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            color: var(--text-muted);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+            }
+
+            .content {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="#" class="navbar-brand">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            Quant-GEMM Bench
+        </a>
+        <div class="navbar-links">
+            <a href="https://github.com/haiyan/Agent4Kernel/quant-gemm-from-scratch" target="_blank">GitHub</a>
+            <a href="../../README.md">Docs</a>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"/>
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <aside class="sidebar">
+            <h3>Filter by Model</h3>
+            <div class="model-filter" id="modelFilter">
+                <a href="#" class="model-filter-all active" data-model="all">All Models</a>
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <h3>Tag Legend</h3>
+            <div class="tag-legend">
+                <div class="legend-item">
+                    <span class="legend-tag tag-status">status</span>
+                    <span class="legend-desc">Verification status</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-tag tag-framework">framework</span>
+                    <span class="legend-desc">Implementation source</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-tag tag-source">source</span>
+                    <span class="legend-desc">Model origin</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-tag tag-layer">layer</span>
+                    <span class="legend-desc">Layer type</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-tag tag-quant">quantization</span>
+                    <span class="legend-desc">Quant format</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-tag tag-dtype">dtype</span>
+                    <span class="legend-desc">Data type</span>
+                </div>
+            </div>
+
+            <h3>Kernel Definitions</h3>
+            <ul class="kernel-list" id="kernelList">
+                <!-- Populated by JavaScript -->
+            </ul>
+        </aside>
+
+        <main class="content" id="content">
+            <div class="loading">Select a kernel from the sidebar</div>
+        </main>
+    </div>
+
+    <footer class="footer">
+        Quant-GEMM Kernel Bench - Quantized GEMM Implementation Viewer
+    </footer>
+
+    <script>
+        // Dynamic kernel definitions (will be populated from server)
+        const kernelDefinitions = {};
+        const kernelPaths = {};
+        const modelInfo = {models: {}, op_categories: {}};
+
+        // API endpoints
+        const KERNELS_API = '/api/kernels';
+        const MODELS_API = '/api/models';
+        const OP_CATEGORIES_API = '/api/op-categories';
+
+        // Fetch available kernels on load
+        async function fetchKernelList() {
+            try {
+                // Fetch kernels and model info in parallel
+                const [kernelsResp, modelsResp] = await Promise.all([
+                    fetch(KERNELS_API),
+                    fetch(MODELS_API)
+                ]);
+                const kernels = await kernelsResp.json();
+                Object.assign(modelInfo, await modelsResp.json());
+
+                for (const kernel of kernels) {
+                    kernelDefinitions[kernel.name] = null;
+                    kernelPaths[kernel.name] = kernel.path;
+                }
+                populateSidebar();
+                // Load first kernel
+                const firstKernel = Object.keys(kernelDefinitions)[0];
+                if (firstKernel) {
+                    loadKernel(firstKernel);
+                }
+            } catch (error) {
+                console.error('Failed to fetch kernel list:', error);
+                // Fallback to hardcoded list
+                const fallbackKernels = [
+                    {name: 'w4a16_q4_0_fp32_n4096_k4096', path: '../definitions/quant_gemm/w4a16_q4_0_fp32_n4096_k4096.json'},
+                    {name: 'w4a8_q4_0_q8_1_n4096_k4096', path: '../definitions/quant_gemm/w4a8_q4_0_q8_1_n4096_k4096.json'},
+                    {name: 'w4_1a8_q4_1_q8_1_n4096_k4096', path: '../definitions/quant_gemm/w4_1a8_q4_1_q8_1_n4096_k4096.json'}
+                ];
+                for (const kernel of fallbackKernels) {
+                    kernelDefinitions[kernel.name] = null;
+                    kernelPaths[kernel.name] = kernel.path;
+                }
+                populateSidebar();
+                const firstKernel = Object.keys(kernelDefinitions)[0];
+                if (firstKernel) {
+                    loadKernel(firstKernel);
+                }
+            }
+        }
+
+        // Theme handling
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        // Initialize theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        // Populate sidebar
+        function populateSidebar() {
+            populateModelFilter();
+            populateKernelList();
+        }
+
+        // Populate model filter
+        function populateModelFilter() {
+            const filter = document.getElementById('modelFilter');
+            filter.innerHTML = '<a href="#" class="model-filter-all active" data-model="all">All</a>';
+
+            for (const [modelId, modelInfo] of Object.entries(modelInfo.models)) {
+                if (modelInfo.parent) continue; // Skip variants, show only top-level
+                const a = document.createElement('a');
+                a.href = '#';
+                a.textContent = modelInfo.display_name;
+                a.dataset.model = modelId;
+                a.onclick = (e) => {
+                    e.preventDefault();
+                    filterByModel(modelId);
+                };
+                filter.appendChild(a);
+            }
+        }
+
+        // Filter kernels by model
+        let currentModelFilter = 'all';
+        function filterByModel(modelId) {
+            currentModelFilter = modelId;
+
+            // Update active state
+            document.querySelectorAll('.model-filter a').forEach(a => {
+                a.classList.remove('active');
+                if (a.dataset.model === modelId) {
+                    a.classList.add('active');
+                }
+            });
+
+            populateKernelList();
+        }
+
+        // Populate kernel list (filtered)
+        function populateKernelList() {
+            const list = document.getElementById('kernelList');
+            list.innerHTML = '';
+
+            // Group kernels by op category
+            const grouped = {};
+            for (const name of Object.keys(kernelDefinitions)) {
+                const category = name.split('_')[1] || 'other';
+                if (!grouped[category]) grouped[category] = [];
+                grouped[category].push(name);
+            }
+
+            // Render grouped kernels
+            for (const [category, names] of Object.entries(grouped)) {
+                // Filter kernels by model if filter is active
+                const filteredNames = currentModelFilter === 'all' ? names :
+                    names.filter(name => {
+                        const kernel = kernelDefinitions[name];
+                        if (!kernel || !kernel.model_architectures) return false;
+                        return kernel.model_architectures.includes(currentModelFilter) ||
+                               kernel.model_architectures.includes(modelInfo.models[currentModelFilter]?.parent);
+                    });
+
+                if (filteredNames.length === 0) continue;
+
+                const categoryLi = document.createElement('li');
+                categoryLi.innerHTML = `<h3>${category.toUpperCase()}</h3>`;
+                list.appendChild(categoryLi);
+
+                for (const name of filteredNames) {
+                    const li = document.createElement('li');
+                    const a = document.createElement('a');
+                    a.href = '#';
+                    a.textContent = name;
+                    a.onclick = (e) => {
+                        e.preventDefault();
+                        loadKernel(name);
+                    };
+                    li.appendChild(a);
+                    list.appendChild(li);
+                }
+            }
+        }
+
+        // Load kernel data
+        async function loadKernel(name) {
+            const content = document.getElementById('content');
+            content.innerHTML = '<div class="loading">Loading...</div>';
+
+            // Update active state in sidebar
+            document.querySelectorAll('.kernel-list a').forEach(a => {
+                a.classList.remove('active');
+                if (a.textContent === name) {
+                    a.classList.add('active');
+                }
+            });
+
+            try {
+                if (!kernelDefinitions[name]) {
+                    const response = await fetch(kernelPaths[name]);
+                    kernelDefinitions[name] = await response.json();
+                }
+                renderKernel(kernelDefinitions[name]);
+            } catch (error) {
+                content.innerHTML = `<div class="loading">Error loading kernel: ${error.message}</div>`;
+            }
+        }
+
+        // Render kernel
+        function renderKernel(data) {
+            const content = document.getElementById('content');
+
+            let html = `
+                <div class="kernel-header">
+                    <h1 class="kernel-name">${escapeHtml(data.name)}</h1>
+                    <p class="kernel-description">${escapeHtml(data.description || '')}</p>
+                    <div class="tags">
+                        ${(data.tags || []).map(tag => {
+                            const [type, value] = tag.split(':');
+                            const isVerified = type === 'status' && value === 'verified';
+                            const isExperimental = type === 'status' && value === 'experimental';
+                            let className = 'tag';
+                            if (isVerified) className += ' status-verified';
+                            else if (isExperimental) className += ' status-experimental';
+                            return `<span class="${className}" data-type="${escapeHtml(type)}">${escapeHtml(tag)}</span>`;
+                        }).join('')}
+                    </div>
+                    ${data.model_architectures ? `
+                    <div class="models-section">
+                        <span class="models-label">Models:</span>
+                        ${(data.model_architectures || []).map(model => {
+                            const modelInfo_data = modelInfo.models[model];
+                            const displayName = modelInfo_data ? modelInfo_data.display_name : model;
+                            return `<span class="model-tag">${escapeHtml(displayName)}</span>`;
+                        }).join('')}
+                    </div>
+                    ` : ''}
+                    ${data.layer_type ? `
+                    <div class="layer-type">
+                        <span class="layer-label">Layer:</span>
+                        <span class="layer-value">${escapeHtml(data.layer_type)}</span>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+
+            // Axes section
+            if (data.axes) {
+                html += `
+                    <div class="section">
+                        <div class="section-header">Axes Parameters</div>
+                        <div class="section-content">
+                            <div class="axes-grid">
+                                ${Object.entries(data.axes).map(([name, axis]) => `
+                                    <div class="axis-item">
+                                        <div class="axis-name">${escapeHtml(name)}</div>
+                                        <div class="axis-value">${axis.value !== undefined ? axis.value : 'variable'}</div>
+                                        <div class="axis-type">${escapeHtml(axis.type)}</div>
+                                        ${axis.description ? `<div class="axis-desc">${escapeHtml(axis.description)}</div>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Inputs section
+            if (data.inputs) {
+                html += `
+                    <div class="section">
+                        <div class="section-header">Inputs</div>
+                        <div class="section-content">
+                            <table class="tensor-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Shape</th>
+                                        <th>Type</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${Object.entries(data.inputs).map(([name, tensor]) => `
+                                        <tr>
+                                            <td class="tensor-name">${escapeHtml(name)}</td>
+                                            <td><span class="tensor-shape">[${Array.isArray(tensor.shape) ? tensor.shape.join(', ') : tensor.shape}]</span></td>
+                                            <td class="tensor-dtype">${escapeHtml(tensor.dtype)}</td>
+                                            <td>${escapeHtml(tensor.description || '')}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Outputs section
+            if (data.outputs) {
+                html += `
+                    <div class="section">
+                        <div class="section-header">Outputs</div>
+                        <div class="section-content">
+                            <table class="tensor-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Shape</th>
+                                        <th>Type</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${Object.entries(data.outputs).map(([name, tensor]) => `
+                                        <tr>
+                                            <td class="tensor-name">${escapeHtml(name)}</td>
+                                            <td><span class="tensor-shape">[${Array.isArray(tensor.shape) ? tensor.shape.join(', ') : tensor.shape}]</span></td>
+                                            <td class="tensor-dtype">${escapeHtml(tensor.dtype)}</td>
+                                            <td>${escapeHtml(tensor.description || '')}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Type definitions section
+            if (data.types) {
+                html += `
+                    <div class="section">
+                        <div class="section-header">Type Definitions</div>
+                        <div class="section-content">
+                            ${Object.entries(data.types).map(([name, type]) => `
+                                <div class="type-def">
+                                    <div class="type-def-header">
+                                        <span class="type-def-name">${escapeHtml(name)}</span>
+                                        <span class="type-def-size">${type.size} bytes</span>
+                                    </div>
+                                    <div class="type-def-body">
+                                        <ul class="field-list">
+                                            ${(type.fields || []).map(field => `
+                                                <li>
+                                                    <span class="field-name">${escapeHtml(field.name)}</span>
+                                                    <span class="field-dtype">${escapeHtml(field.dtype)}</span>
+                                                    <span class="field-desc">${escapeHtml(field.description || '')}</span>
+                                                </li>
+                                            `).join('')}
+                                        </ul>
+                                        ${type.quantization || type.formula ? `
+                                            <div class="type-meta">
+                                                ${type.quantization ? `
+                                                    <div class="type-meta-item">
+                                                        <span class="type-meta-label">Quantization:</span>
+                                                        <span class="type-meta-value">${escapeHtml(type.quantization)}</span>
+                                                    </div>
+                                                ` : ''}
+                                                ${type.formula ? `
+                                                    <div class="type-meta-item">
+                                                        <span class="type-meta-label">Formula:</span>
+                                                        <span class="type-meta-value">${escapeHtml(type.formula)}</span>
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Constraints section
+            if (data.constraints && data.constraints.length > 0) {
+                html += `
+                    <div class="section">
+                        <div class="section-header">Constraints</div>
+                        <div class="section-content">
+                            <ul class="constraints-list">
+                                ${data.constraints.map(c => `<li>${escapeHtml(c)}</li>`).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Formula section
+            if (data.formula) {
+                html += `
+                    <div class="section">
+                        <div class="section-header">Formula</div>
+                        <div class="section-content">
+                            ${Object.entries(data.formula).map(([key, value]) => `
+                                <div class="formula-block">
+                                    <div class="formula-label">${escapeHtml(key.replace(/_/g, ' '))}</div>
+                                    <div class="formula-content">${escapeHtml(value)}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Reference implementation section
+            if (data.reference) {
+                const codeId = 'code-' + Math.random().toString(36).substr(2, 9);
+                html += `
+                    <div class="section">
+                        <div class="code-block" id="${codeId}">
+                            <div class="code-header" onclick="toggleCode('${codeId}')">
+                                <span class="code-title">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="6 9 12 15 18 9"/>
+                                    </svg>
+                                    Reference Implementation (Python)
+                                </span>
+                                <div class="code-actions">
+                                    <button class="copy-btn" onclick="event.stopPropagation(); copyCode('${codeId}')">Copy</button>
+                                </div>
+                            </div>
+                            <div class="code-content">
+                                <pre>${highlightPython(data.reference)}</pre>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            content.innerHTML = html;
+        }
+
+        // Toggle code block
+        function toggleCode(id) {
+            document.getElementById(id).classList.toggle('collapsed');
+        }
+
+        // Copy code
+        function copyCode(id) {
+            const codeBlock = document.getElementById(id);
+            const code = codeBlock.querySelector('pre').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const btn = codeBlock.querySelector('.copy-btn');
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+
+        // Simple Python syntax highlighting
+        function highlightPython(code) {
+            const escaped = escapeHtml(code);
+            return escaped
+                .replace(/\b(def|class|import|from|return|if|else|elif|for|while|in|and|or|not|True|False|None|with|as|try|except|finally|raise|pass|break|continue|lambda|yield|global|nonlocal|assert)\b/g, '<span class="keyword">$1</span>')
+                .replace(/(["'])(?:(?!\1)[^\\]|\\.)*\1/g, '<span class="string">$&</span>')
+                .replace(/(#.*$)/gm, '<span class="comment">$1</span>')
+                .replace(/\b(\d+\.?\d*)\b/g, '<span class="number">$1</span>')
+                .replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g, '<span class="function">$1</span>(');
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            if (typeof text !== 'string') return text;
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize on page load
+        fetchKernelList();
+    </script>
+</body>
+</html>

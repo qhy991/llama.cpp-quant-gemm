@@ -1,0 +1,72 @@
+{
+  "name": "w4a16_f16_fp16_n4096_k4096",
+  "op_type": "quant_gemm",
+  "variant": "W4A16_F16",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from FlashAttention-optimized models - FP16 computation path for memory-constrained scenarios (hidden_size=4096).",
+  "tags": [
+    "status:verified",
+    "framework:flashinfer",
+    "source:flashattention-optimized",
+    "layer:attention",
+    "layer:ffn",
+    "quantization:f16"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch dimension"
+    },
+    "N": {
+      "type": "const",
+      "value": 4096,
+      "description": "Output features"
+    },
+    "K": {
+      "type": "const",
+      "value": 4096,
+      "description": "Input features"
+    },
+    "block_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Quantization block size"
+    }
+  },
+  "inputs": {
+    "activation": {
+      "shape": ["M", "K"],
+      "dtype": "float16",
+      "description": "FP16 activation tensor (2 bytes per value)"
+    },
+    "weight": {
+      "shape": ["N", "K/32"],
+      "dtype": "block_q4_0",
+      "description": "Q4_0 quantized weight"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "N"],
+      "dtype": "float16",
+      "description": "Output in FP16"
+    }
+  },
+  "constraints": [
+    "K % 32 == 0",
+    "sizeof(block_q4_0) == 18"
+  ],
+  "types": {
+    "block_q4_0": {
+      "size": 18,
+      "fields": [
+        {"name": "d", "dtype": "half", "size": 2, "description": "Scale factor"},
+        {"name": "qs", "dtype": "uint8[16]", "size": 16, "description": "32 x 4-bit values"}
+      ]
+    }
+  },
+  "formula": {
+    "dequantize": "w[i] = (qs[i] - 8) * d (as __half)",
+    "gemm": "C[m,n] = sum_k((__half)A[m,k] * dequant_half(B[n,k]))"
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(activation, weight):\n    \"\"\"\n    Reference implementation for W4A16_F16 GEMM.\n    activation: [M, K] float16\n    weight: [N, K/32] as block_q4_0\n    returns: [M, N] float16\n    \"\"\"\n    # Convert to float32 for computation (reference uses FP32 internally)\n    act_f32 = activation.float() if activation.dtype != torch.float32 else activation\n    \n    M, K = act_f32.shape\n    N = weight.shape[0]\n    num_blocks = K // 32\n    \n    # Simple dequantization\n    import struct\n    def dequant_q4_0_block(block_bytes):\n        d = struct.unpack('<e', block_bytes[:2])[0]\n        qs = block_bytes[2:18]\n        values = []\n        for i in range(16):\n            q_low = (qs[i] & 0x0F) - 8\n            q_high = (qs[i] >> 4) - 8\n            values.append(q_low * d)\n            values.append(q_high * d)\n        return values\n    \n    weight_dequant = torch.zeros(N, K, dtype=torch.float32)\n    for n in range(N):\n        for b in range(num_blocks):\n            block_values = dequant_q4_0_block(weight[n, b])\n            weight_dequant[n, b*32:(b+1)*32] = torch.tensor(block_values)\n    \n    output = torch.matmul(act_f32, weight_dequant.T)\n    return output.half()"
+}

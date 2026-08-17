@@ -1,0 +1,68 @@
+{
+  "models": {
+    "llama": {
+      "display_name": "Llama",
+      "organization": "Meta",
+      "description": "Meta's Llama family of models"
+    },
+    "llama-3": {
+      "display_name": "Llama 3",
+      "organization": "Meta",
+      "parent": "llama",
+      "description": "Llama 3 (8B, 70B)"
+    },
+    "llama-3.1": {
+      "display_name": "Llama 3.1",
+      "organization": "Meta",
+      "parent": "llama-3",
+      "description": "Llama 3.1 (8B, 70B)"
+    },
+    "mistral": {
+      "display_name": "Mistral",
+      "organization": "Mistral AI",
+      "description": "Mistral family of models"
+    },
+    "qwen": {
+      "display_name": "Qwen",
+      "organization": "Alibaba",
+      "description": "Qwen family of models"
+    },
+    "qwen3": {
+      "display_name": "Qwen3",
+      "organization": "Alibaba",
+      "parent": "qwen",
+      "description": "Qwen3 (30B, etc.)"
+    },
+    "deepseek": {
+      "display_name": "DeepSeek",
+      "organization": "DeepSeek",
+      "description": "DeepSeek family of models"
+    },
+    "deepseek-v3": {
+      "display_name": "DeepSeek V3",
+      "organization": "DeepSeek",
+      "parent": "deepseek",
+      "description": "DeepSeek V3 MoE model"
+    },
+    "phi": {
+      "display_name": "Phi",
+      "organization": "Microsoft",
+      "description": "Microsoft Phi family"
+    },
+    "gemma": {
+      "display_name": "Gemma",
+      "organization": "Google",
+      "description": "Google Gemma family"
+    }
+  },
+  "op_categories": {
+    "quant_gemm": "Quantized Matrix Multiply",
+    "quant_vec_dot": "Quantized Vector Dot Product",
+    "quantize": "Quantization",
+    "attention": "Attention",
+    "moe": "Mixture of Experts",
+    "normalization": "Normalization",
+    "activation": "Activation Function",
+    "sampling": "Token Sampling"
+  }
+}

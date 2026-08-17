@@ -1,0 +1,72 @@
+{
+  "name": "w4a16_q4_0_fp32_n512_k256",
+  "op_type": "quant_gemm",
+  "variant": "W4A16",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from DeepSeek V3 - MoE expert router/gate (num_experts=256, hidden_size=4096, expert_hidden=256).",
+  "tags": [
+    "status:verified",
+    "framework:llama.cpp",
+    "source:deepseek-v3",
+    "layer:moe-router",
+    "layer:moe-gate",
+    "quantization:q4_0"
+  ],
+  "model_architectures": ["deepseek", "deepseek-v3"],
+  "op_category": "quant_gemm",
+  "layer_type": "moe-expert",
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch dimension"
+    },
+    "N": {
+      "type": "const",
+      "value": 512,
+      "description": "Output features (small, typical for MoE experts)"
+    },
+    "K": {
+      "type": "const",
+      "value": 256,
+      "description": "Input features (small)"
+    },
+    "block_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Quantization block size"
+    }
+  },
+  "inputs": {
+    "activation": {
+      "shape": ["M", "K"],
+      "dtype": "float32"
+    },
+    "weight": {
+      "shape": ["N", "K/32"],
+      "dtype": "block_q4_0"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "N"],
+      "dtype": "float32"
+    }
+  },
+  "constraints": [
+    "K % 32 == 0",
+    "sizeof(block_q4_0) == 18"
+  ],
+  "types": {
+    "block_q4_0": {
+      "size": 18,
+      "fields": [
+        {"name": "d", "dtype": "half", "size": 2},
+        {"name": "qs", "dtype": "uint8[16]", "size": 16}
+      ]
+    }
+  },
+  "formula": {
+    "dequantize": "w[i] = (qs[i] - 8) * d",
+    "gemm": "C[m,n] = sum_k(A[m,k] * dequant(B[n,k]))"
+  },
+  "reference": "import torch\nimport struct\n\ndef dequantize_q4_0_block(block_bytes):\n    d = struct.unpack('<e', block_bytes[:2])[0]\n    qs = block_bytes[2:18]\n    values = []\n    for i in range(16):\n        q_low = (qs[i] & 0x0F) - 8\n        q_high = (qs[i] >> 4) - 8\n        values.append(q_low * d)\n        values.append(q_high * d)\n    return torch.tensor(values, dtype=torch.float32)\n\n@torch.no_grad()\ndef run(activation, weight):\n    M, K = activation.shape\n    N = weight.shape[0]\n    num_blocks = K // 32\n    \n    weight_dequant = torch.zeros(N, K, dtype=torch.float32)\n    for n in range(N):\n        for b in range(num_blocks):\n            block_values = dequantize_q4_0_block(weight[n, b])\n            weight_dequant[n, b*32:(b+1)*32] = block_values\n    \n    output = torch.matmul(activation, weight_dequant.T)\n    return output"
+}

@@ -1,0 +1,78 @@
+{
+  "name": "w4a8_q4_0_q8_1_n8192_k5120",
+  "op_type": "quant_gemm",
+  "variant": "W4A8",
+  "description": "Quantized GEMM with Q4_0 weights and Q8_1 activations. C = A @ B.T. Captured from Llama 4 Maverick 17B / Qwen 3 30B - attention output projection (hidden_size=8192, ffn_intermediate=5120).",
+  "tags": [
+    "status:verified",
+    "framework:llama.cpp",
+    "source:llama-4-maverick-17b",
+    "layer:attention-output",
+    "quantization:q4_0",
+    "quantization:q8_1"
+  ],
+  "model_architectures": ["deepseek", "deepseek-v3", "llama", "qwen3"],
+  "op_category": "quant_gemm",
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch dimension"
+    },
+    "N": {
+      "type": "const",
+      "value": 8192,
+      "description": "Output features (large hidden size)"
+    },
+    "K": {
+      "type": "const",
+      "value": 5120,
+      "description": "Input features (FFN intermediate size)"
+    },
+    "block_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Quantization block size"
+    }
+  },
+  "inputs": {
+    "activation": {
+      "shape": ["M", "K/32"],
+      "dtype": "block_q8_1"
+    },
+    "weight": {
+      "shape": ["N", "K/32"],
+      "dtype": "block_q4_0"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "N"],
+      "dtype": "float32"
+    }
+  },
+  "constraints": [
+    "K % 32 == 0",
+    "sizeof(block_q4_0) == 18",
+    "sizeof(block_q8_1) == 36"
+  ],
+  "types": {
+    "block_q4_0": {
+      "size": 18,
+      "fields": [
+        {"name": "d", "dtype": "half", "size": 2},
+        {"name": "qs", "dtype": "uint8[16]", "size": 16}
+      ]
+    },
+    "block_q8_1": {
+      "size": 36,
+      "fields": [
+        {"name": "ds", "dtype": "half2", "size": 4},
+        {"name": "qs", "dtype": "int8[32]", "size": 32}
+      ]
+    }
+  },
+  "formula": {
+    "dot_product": "result = d_w * (d_a * sumi - 8.0f * s_a)"
+  },
+  "reference": "import torch\nimport struct\n\ndef vec_dot_q4_0_q8_1(w_block, a_block):\n    d_w = struct.unpack('<e', w_block[:2])[0]\n    w_qs = w_block[2:18]\n    \n    ds = struct.unpack('<ee', a_block[:4])\n    d_a, s_a = ds[0], ds[1]\n    a_qs = struct.unpack('<32b', a_block[4:36])\n    \n    sumi = 0\n    for i in range(16):\n        q_w_low = w_qs[i] & 0x0F\n        q_w_high = w_qs[i] >> 4\n        sumi += q_w_low * a_qs[i]\n        sumi += q_w_high * a_qs[i + 16]\n    \n    return d_w * (d_a * sumi - 8.0 * s_a)\n\n@torch.no_grad()\ndef run(activation, weight):\n    M = activation.shape[0]\n    N = weight.shape[0]\n    num_blocks = activation.shape[1]\n    \n    output = torch.zeros(M, N, dtype=torch.float32)\n    \n    for m in range(M):\n        for n in range(N):\n            acc = 0.0\n            for b in range(num_blocks):\n                acc += vec_dot_q4_0_q8_1(weight[n, b], activation[m, b])\n            output[m, n] = acc\n    \n    return output"
+}

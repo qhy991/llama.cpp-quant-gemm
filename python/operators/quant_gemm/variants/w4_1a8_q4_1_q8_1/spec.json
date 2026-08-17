@@ -1,0 +1,71 @@
+{
+  "name": "w4_1a8_q4_1_q8_1",
+  "family": "quant_gemm",
+  "version": "1.0.0",
+  "description": "Quantized GEMM with Q4_1 (asymmetric) weights and Q8_1 activations. Q4_1 uses min-max quantization with separate minimum value offset.",
+
+  "kernel": {
+    "file": "kernel.cu",
+    "entry_point": "gemm_q4_1_q8_1"
+  },
+
+  "inputs": {
+    "weight": {
+      "dtype": "block_q4_1",
+      "shape": ["N", "K/32", 20],
+      "description": "Q4_1 quantized weight tensor [output_features, num_blocks, 20 bytes/block]",
+      "quantizer": "quantize_q4_1"
+    },
+    "activation": {
+      "dtype": "block_q8_1",
+      "shape": ["M", "K/32", 36],
+      "description": "Q8_1 quantized activation tensor",
+      "quantizer": "quantize_q8_1"
+    }
+  },
+
+  "outputs": {
+    "output": {
+      "dtype": "float32",
+      "shape": ["M", "N"],
+      "description": "Output tensor [batch, output_features]"
+    }
+  },
+
+  "params": {
+    "M": {
+      "type": "int",
+      "description": "Batch dimension",
+      "constraint": "M >= 1"
+    },
+    "N": {
+      "type": "int",
+      "default": 4096,
+      "description": "Output features"
+    },
+    "K": {
+      "type": "int",
+      "default": 4096,
+      "description": "Input features",
+      "constraint": "K % 32 == 0"
+    }
+  },
+
+  "reference": "reference.py:run",
+
+  "test_configs": [
+    {"name": "single", "M": 1, "N": 4096, "K": 4096},
+    {"name": "small_batch", "M": 4, "N": 4096, "K": 4096},
+    {"name": "medium_batch", "M": 128, "N": 4096, "K": 4096}
+  ],
+
+  "accuracy": {
+    "metric": "nmse",
+    "threshold": 0.1
+  },
+
+  "formula": {
+    "dot_product": "result = d_w * d_a * sumi + m_w * s_a",
+    "explanation": "Q4_1 uses asymmetric quantization with minimum offset m. The m*s term compensates for the offset."
+  }
+}

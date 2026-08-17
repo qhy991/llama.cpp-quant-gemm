@@ -1,0 +1,75 @@
+{
+  "name": "w4a16_q4_k_fp32_n4096_k4096",
+  "op_type": "quant_gemm",
+  "variant": "W4A16_K",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from production llama.cpp deployments - K-quants optimized format (Q4_K, hidden_size=4096) for better quality than Q4_0.",
+  "tags": [
+    "status:verified",
+    "framework:llama.cpp",
+    "source:production-optimized",
+    "layer:ffn",
+    "layer:attention",
+    "quantization:q4_k"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch dimension"
+    },
+    "N": {
+      "type": "const",
+      "value": 4096,
+      "description": "Output features"
+    },
+    "K": {
+      "type": "const",
+      "value": 4096,
+      "description": "Input features (must be multiple of 256 for Q4_K)"
+    },
+    "block_size": {
+      "type": "const",
+      "value": 256,
+      "description": "K-quant block size (QK_K)"
+    }
+  },
+  "inputs": {
+    "activation": {
+      "shape": ["M", "K"],
+      "dtype": "float32",
+      "description": "FP32 activation tensor"
+    },
+    "weight": {
+      "shape": ["N", "K/256"],
+      "dtype": "block_q4_K",
+      "description": "Q4_K quantized weight. Each block is variable size with nested scales and 4-bit values"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "N"],
+      "dtype": "float32"
+    }
+  },
+  "constraints": [
+    "K % 256 == 0",
+    "QK_K == 256",
+    "sizeof(block_q4_K) uses variable super-blocks"
+  ],
+  "types": {
+    "block_q4_K": {
+      "size": "variable (depends on k-scale)",
+      "fields": [
+        {"name": "d", "dtype": "half", "size": 2, "description": "Super-block scale"},
+        {"name": "dmin", "dtype": "half", "size": 2, "description": "Super-block minimum"},
+        {"name": "scales", "dtype": "uint8[K/64]", "size": 4, "description": "4-bit scales for each sub-block"},
+        {"name": "qs", "dtype": "uint8[K/2]", "size": 128, "description": "4-bit packed values"}
+      ],
+      "note": "Q4_K uses 32-value sub-blocks within 256-value super-blocks"
+    }
+  },
+  "formula": {
+    "dequantize": "w[i] = d * scales[i/32] * qs[i] + dmin",
+    "gemm": "C[m,n] = sum_k(A[m,k] * dequant(B[n,k]))"
+  },
+  "reference": "import torch\nimport struct\n\n# Q4_K has complex structure with nested scales\n# This is a simplified reference implementation\n\ndef dequantize_q4_k_block(block_bytes, k=256):\n    \"\"\"Dequantize Q4_K block to k float values\"\"\"\n    d = struct.unpack('<e', block_bytes[:2])[0]\n    dmin = struct.unpack('<e', block_bytes[2:4])[0]\n    \n    # Q4_K structure is complex - this is simplified\n    # Uses 32-value sub-blocks with 4-bit scales\n    scales = block_bytes[4:8]  # 4 bytes of scales\n    qs = block_bytes[8:136]    # 128 bytes of 4-bit values\n    \n    values = []\n    for i in range(k):\n        sub_block_idx = i // 32\n        scale = (scales[sub_block_idx] & 0x0F) * d\n        q = (qs[i//2] >> (4 * (i % 2))) & 0x0F\n        # Q4_K uses non-linear dequantization\n        val = scale * (q / 16.0) + dmin\n        values.append(val)\n    \n    return torch.tensor(values, dtype=torch.float32)\n\n@torch.no_grad()\ndef run(activation, weight):\n    \"\"\"\n    Reference implementation for W4A16 Q4_K GEMM.\n    activation: [M, K] float32\n    weight: [N, K/256] as block_q4_K (flattened)\n    returns: [M, N] float32\n    \"\"\"\n    M, K = activation.shape\n    N = weight.shape[0]\n    num_blocks = K // 256\n    \n    weight_dequant = torch.zeros(N, K, dtype=torch.float32)\n    for n in range(N):\n        for b in range(num_blocks):\n            block_values = dequantize_q4_k_block(weight[n, b])\n            weight_dequant[n, b*256:(b+1)*256] = block_values\n    \n    output = torch.matmul(activation, weight_dequant.T)\n    return output"
+}

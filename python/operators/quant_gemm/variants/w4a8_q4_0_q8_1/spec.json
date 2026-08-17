@@ -1,0 +1,72 @@
+{
+  "name": "w4a8_q4_0_q8_1",
+  "family": "quant_gemm",
+  "version": "1.0.0",
+  "description": "Quantized GEMM with Q4_0 weights and Q8_1 activations. Compatible with llama.cpp mmq kernels.",
+
+  "kernel": {
+    "file": "kernel.cu",
+    "entry_point": "gemm_q4_0_q8_1"
+  },
+
+  "inputs": {
+    "weight": {
+      "dtype": "block_q4_0",
+      "shape": ["N", "K/32", 18],
+      "description": "Q4_0 quantized weight tensor [output_features, num_blocks, 18 bytes/block]",
+      "quantizer": "quantize_q4_0"
+    },
+    "activation": {
+      "dtype": "block_q8_1",
+      "shape": ["M", "K/32", 36],
+      "description": "Q8_1 quantized activation tensor [batch, num_blocks, 36 bytes/block]",
+      "quantizer": "quantize_q8_1"
+    }
+  },
+
+  "outputs": {
+    "output": {
+      "dtype": "float32",
+      "shape": ["M", "N"],
+      "description": "Output tensor [batch, output_features]"
+    }
+  },
+
+  "params": {
+    "M": {
+      "type": "int",
+      "description": "Batch dimension (batch_size * seq_len)",
+      "constraint": "M >= 1"
+    },
+    "N": {
+      "type": "int",
+      "default": 4096,
+      "description": "Output features (model hidden_size)"
+    },
+    "K": {
+      "type": "int",
+      "default": 4096,
+      "description": "Input features (must be multiple of 32)",
+      "constraint": "K % 32 == 0"
+    }
+  },
+
+  "reference": "reference.py:run",
+
+  "test_configs": [
+    {"name": "single", "M": 1, "N": 4096, "K": 4096},
+    {"name": "small_batch", "M": 4, "N": 4096, "K": 4096},
+    {"name": "medium_batch", "M": 128, "N": 4096, "K": 4096},
+    {"name": "large_batch", "M": 4096, "N": 4096, "K": 4096}
+  ],
+
+  "accuracy": {
+    "metric": "nmse",
+    "threshold": 0.1
+  },
+
+  "formula": {
+    "dot_product": "result = d_w * (d_a * sumi - 8.0f * s_a)",
+    "explanation": "Q4_0 stores values with +8 offset. Compensation term -8*s_a corrects for this."
+  }
+}

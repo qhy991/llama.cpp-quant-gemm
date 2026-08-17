@@ -1,0 +1,29 @@
+{
+  "name": "quant_gemm",
+  "version": "1.0.0",
+  "description": "Quantized GEMM operators for LLM inference",
+  "op_type": "gemm",
+
+  "common_dependencies": [
+    "../common/csrc/types.cuh",
+    "../common/csrc/quantize.cu"
+  ],
+
+  "interface": {
+    "inputs": ["weight", "activation"],
+    "outputs": ["output"],
+    "params": ["M", "N", "K"]
+  },
+
+  "variants": [
+    "w4a8_q4_0_q8_1",
+    "w4a16_q4_0_fp32",
+    "w4_1a8_q4_1_q8_1"
+  ],
+
+  "notes": {
+    "dimension_convention": "M=batch, N=output_features, K=input_features",
+    "computation": "output[M, N] = activation[M, K] @ weight[N, K]^T",
+    "kernel_convention": "Kernel computes W[N,K] @ A[M,K]^T = [N,M], then transpose to [M,N]"
+  }
+}

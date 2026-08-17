@@ -1,0 +1,70 @@
+{
+  "name": "w4a16_q4_0_fp32",
+  "family": "quant_gemm",
+  "version": "1.0.0",
+  "description": "Quantized GEMM with Q4_0 weights and FP32 activations. Simpler than W4A8 as no activation quantization needed.",
+
+  "kernel": {
+    "file": "kernel.cu",
+    "entry_point": "gemm_q4_0_fp32"
+  },
+
+  "inputs": {
+    "weight": {
+      "dtype": "block_q4_0",
+      "shape": ["N", "K/32", 18],
+      "description": "Q4_0 quantized weight tensor",
+      "quantizer": "quantize_q4_0"
+    },
+    "activation": {
+      "dtype": "float32",
+      "shape": ["M", "K"],
+      "description": "FP32 activation tensor"
+    }
+  },
+
+  "outputs": {
+    "output": {
+      "dtype": "float32",
+      "shape": ["M", "N"],
+      "description": "Output tensor"
+    }
+  },
+
+  "params": {
+    "M": {
+      "type": "int",
+      "description": "Batch dimension",
+      "constraint": "M >= 1"
+    },
+    "N": {
+      "type": "int",
+      "default": 4096,
+      "description": "Output features"
+    },
+    "K": {
+      "type": "int",
+      "default": 4096,
+      "description": "Input features",
+      "constraint": "K % 32 == 0"
+    }
+  },
+
+  "reference": "reference.py:run",
+
+  "test_configs": [
+    {"name": "single", "M": 1, "N": 4096, "K": 4096},
+    {"name": "small_batch", "M": 4, "N": 4096, "K": 4096},
+    {"name": "medium_batch", "M": 128, "N": 4096, "K": 4096}
+  ],
+
+  "accuracy": {
+    "metric": "nmse",
+    "threshold": 0.05
+  },
+
+  "formula": {
+    "dequantize": "w[i] = (qs[i] - 8) * d",
+    "gemm": "C[m,n] = sum_k(A[m,k] * dequant(B[n,k]))"
+  }
+}

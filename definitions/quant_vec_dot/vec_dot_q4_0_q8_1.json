@@ -1,0 +1,106 @@
+{
+  "name": "vec_dot_q4_0_q8_1",
+  "op_type": "quant_vec_dot",
+  "variant": "q4_0_q8_1",
+  "description": "Block-wise vector dot product between Q4_0 weight block and Q8_1 activation block. This is the fundamental building block for W4A8 quantized GEMM. Returns a single FP32 scalar.",
+  "tags": [
+    "status:verified",
+    "framework:llama.cpp",
+    "quantization:q4_0",
+    "quantization:q8_1",
+    "primitive:dot_product"
+  ],
+  "axes": {
+    "block_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Number of elements in each quantization block"
+    }
+  },
+  "inputs": {
+    "weight_block": {
+      "shape": null,
+      "dtype": "block_q4_0",
+      "size_bytes": 18,
+      "description": "Single Q4_0 block containing 32 quantized 4-bit weight values"
+    },
+    "activation_block": {
+      "shape": null,
+      "dtype": "block_q8_1",
+      "size_bytes": 36,
+      "description": "Single Q8_1 block containing 32 quantized 8-bit activation values with sum"
+    }
+  },
+  "outputs": {
+    "result": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Scalar dot product result"
+    }
+  },
+  "types": {
+    "block_q4_0": {
+      "size": 18,
+      "layout": [
+        {"offset": 0, "name": "d", "dtype": "half", "size": 2},
+        {"offset": 2, "name": "qs", "dtype": "uint8[16]", "size": 16}
+      ],
+      "unpacking": {
+        "q_low": "qs[i] & 0x0F",
+        "q_high": "qs[i] >> 4",
+        "mapping": "qs[i] contains q[i] (low nibble) and q[i+16] (high nibble)"
+      },
+      "quantization": {
+        "type": "symmetric_with_offset",
+        "offset": 8,
+        "range": "[0, 15]",
+        "dequant": "(q - 8) * d"
+      }
+    },
+    "block_q8_1": {
+      "size": 36,
+      "layout": [
+        {"offset": 0, "name": "ds", "dtype": "half2", "size": 4},
+        {"offset": 4, "name": "qs", "dtype": "int8[32]", "size": 32}
+      ],
+      "ds_access": {
+        "d": "__low2half(ds) or ds.x",
+        "s": "__high2half(ds) or ds.y"
+      },
+      "quantization": {
+        "type": "symmetric_with_sum",
+        "range": "[-128, 127]",
+        "sum_purpose": "Compensation for Q4_0 offset in dot product"
+      }
+    }
+  },
+  "formula": {
+    "mathematical": "result = Σ_{i=0}^{31} dequant(w[i]) * dequant(a[i])",
+    "optimized": "result = d_w * (d_a * sumi - 8.0f * s_a)",
+    "derivation": [
+      "Original: Σ (q_w - 8) * d_w * q_a * d_a",
+      "Factor out scales: d_w * d_a * Σ (q_w - 8) * q_a",
+      "Expand: d_w * d_a * (Σ q_w * q_a - 8 * Σ q_a)",
+      "Note: s_a ≈ d_a * Σ q_a (stored in block_q8_1)",
+      "So: Σ q_a ≈ s_a / d_a",
+      "Result: d_w * d_a * sumi - 8 * d_w * s_a",
+      "Simplified: d_w * (d_a * sumi - 8 * s_a)"
+    ]
+  },
+  "implementation": {
+    "cpu": {
+      "loop_structure": "for i in [0, 15]: process low and high nibbles",
+      "integer_accumulator": "int32_t sumi"
+    },
+    "cuda_naive": {
+      "parallel_over": "output elements (M, N)",
+      "sequential_over": "K dimension (blocks)"
+    },
+    "cuda_dp4a": {
+      "instruction": "__dp4a(int a, int b, int c) = c + dot4(a, b)",
+      "packing": "Pack 4 consecutive 4-bit values into int32",
+      "speedup": "4 multiply-adds per instruction"
+    }
+  },
+  "reference": "// C/CUDA implementation\n__device__ __forceinline__ float vec_dot_q4_0_q8_1(\n    const block_q4_0* __restrict__ w,\n    const block_q8_1* __restrict__ a\n) {\n    // Extract scales and sum\n    const float d_w = __half2float(w->d);\n    const float d_a = __half2float(__low2half(a->ds));\n    const float s_a = __half2float(__high2half(a->ds));\n    \n    // Integer dot product\n    int32_t sumi = 0;\n    \n    #pragma unroll\n    for (int i = 0; i < 16; i++) {\n        const int q_w_low  = (w->qs[i] & 0x0F);\n        const int q_w_high = (w->qs[i] >> 4);\n        \n        sumi += q_w_low  * (int32_t)a->qs[i];\n        sumi += q_w_high * (int32_t)a->qs[i + 16];\n    }\n    \n    // Apply compensation formula\n    return d_w * (d_a * (float)sumi - 8.0f * s_a);\n}"
+}

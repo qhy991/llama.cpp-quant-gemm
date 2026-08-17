@@ -1,0 +1,71 @@
+{
+  "name": "w8a8_q8_0_q8_0_n4096_k4096",
+  "op_type": "quant_gemm",
+  "variant": "W8A8",
+  "description": "Fully quantized GEMM with Q8_0 weights and Q8_0 activations. Used for integer-only inference paths.",
+  "tags": [
+    "status:verified",
+    "framework:llama.cpp",
+    "source:llama-3-8b",
+    "layer:ffn-up",
+    "quantization:q8_0"
+  ],
+  "axes": {
+    "M": {
+      "type": "var",
+      "description": "Batch dimension"
+    },
+    "N": {
+      "type": "const",
+      "value": 4096,
+      "description": "Output features"
+    },
+    "K": {
+      "type": "const",
+      "value": 4096,
+      "description": "Input features"
+    },
+    "block_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Quantization block size"
+    }
+  },
+  "inputs": {
+    "activation": {
+      "shape": ["M", "K/32"],
+      "dtype": "block_q8_0",
+      "description": "Q8_0 quantized activation (34 bytes per block)"
+    },
+    "weight": {
+      "shape": ["N", "K/32"],
+      "dtype": "block_q8_0",
+      "description": "Q8_0 quantized weight (34 bytes per block)"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "N"],
+      "dtype": "float32",
+      "description": "Output tensor in FP32"
+    }
+  },
+  "constraints": [
+    "K % 32 == 0",
+    "sizeof(block_q8_0) == 34"
+  ],
+  "types": {
+    "block_q8_0": {
+      "size": 34,
+      "fields": [
+        {"name": "d", "dtype": "half", "size": 2, "description": "Scale factor"},
+        {"name": "qs", "dtype": "int8[32]", "size": 32, "description": "32 x 8-bit signed values"}
+      ]
+    }
+  },
+  "formula": {
+    "dot_product": "result = d_w * d_a * sum(qs_w[i] * qs_a[i])",
+    "explanation": "Simple integer dot product since Q8_0 has no offset compensation needed."
+  },
+  "reference": "import torch\nimport struct\n\ndef vec_dot_q8_0_q8_0(w_block, a_block):\n    \"\"\"Compute dot product of two Q8_0 blocks\"\"\"\n    d_w = struct.unpack('<e', w_block[:2])[0]\n    d_a = struct.unpack('<e', a_block[:2])[0]\n    w_qs = struct.unpack('<32b', w_block[2:34])\n    a_qs = struct.unpack('<32b', a_block[2:34])\n    \n    sumi = sum(wq * aq for wq, aq in zip(w_qs, a_qs))\n    return d_w * d_a * sumi\n\n@torch.no_grad()\ndef run(activation, weight):\n    M = activation.shape[0]\n    N = weight.shape[0]\n    num_blocks = activation.shape[1]\n    \n    output = torch.zeros(M, N, dtype=torch.float32)\n    \n    for m in range(M):\n        for n in range(N):\n            acc = 0.0\n            for b in range(num_blocks):\n                acc += vec_dot_q8_0_q8_0(weight[n, b], activation[m, b])\n            output[m, n] = acc\n    \n    return output"
+}

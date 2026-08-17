@@ -1,0 +1,60 @@
+=======================================================================
+Best Kernels Benchmark
+=======================================================================
+Matrix size: M=4096, N=2, K=14336
+FLOPs: 0.23 GFLOP
+GPU: NVIDIA GeForce RTX 5070 Laptop GPU
+=======================================================================
+
+Computing reference result...
+
+[Naive] Verifying...
+  Max diff: 0.000000, Errors: 0/8192
+
+[Warp Multirow] Verifying...
+  Max diff: 0.012695, Errors: 0/8192
+
+[Shared Memory] Verifying...
+  Max diff: 0.012695, Errors: 0/8192
+
+[2D Tile (N=4)] Verifying...
+  Max diff: 0.012695, Errors: 0/8192
+
+[2D Tile (K=256)] Verifying...
+  Max diff: 0.012695, Errors: 0/8192
+
+[Vectorized (Safe)] Verifying...
+  Max diff: 0.012695, Errors: 0/8192
+
+[Vectorized (Float4)] Verifying...
+  Mismatch at 0: ref=0.000000, test=-10209.422852, diff=10209.422852
+  Mismatch at 1: ref=0.000000, test=-4462.699219, diff=4462.699219
+  Mismatch at 2: ref=0.000000, test=-7708.408203, diff=7708.408203
+  Mismatch at 3: ref=0.000000, test=-114.705551, diff=114.705551
+  Mismatch at 4: ref=0.000000, test=-10850.787109, diff=10850.787109
+  Max diff: 20933.619141, Errors: 7864/8192
+
+[INFO] GPU supports async copy (SM 12.0), testing async version...
+
+[Async Copy + Pipeline] Verifying...
+  Mismatch at 0: ref=0.000000, test=302776786775336332296192.000000, diff=302776786775336332296192.000000
+  Mismatch at 2: ref=0.000000, test=302776786775336332296192.000000, diff=302776786775336332296192.000000
+  Mismatch at 8: ref=0.000000, test=-8648.237305, diff=8648.237305
+  Mismatch at 9: ref=0.000000, test=-3809.242920, diff=3809.242920
+  Mismatch at 10: ref=0.000000, test=-7767.658203, diff=7767.658203
+  Max diff: 302776786775336332296192.000000, Errors: 7858/8192
+
+=======================================================================
+                           RESULTS SUMMARY
+=======================================================================
+Kernel               │  Time (ms) │     GFLOPS │    Speedup │  Correct
+─────────────────────┼────────────┼────────────┼────────────┼─────────
+Naive                │     2.4419 │       96.2 │      1.00x │      ✓
+Warp Multirow        │     0.6135 │      382.9 │      3.98x │      ✓
+Shared Memory        │     0.6567 │      357.7 │      3.72x │      ✓
+2D Tile (N=4)        │     0.5249 │      447.5 │      4.65x │      ✓
+2D Tile (K=256)      │     0.5242 │      448.1 │      4.66x │      ✓
+Vectorized (Safe)    │     0.6907 │      340.0 │      3.54x │      ✓
+Vectorized (Float4)  │     0.6907 │      340.0 │      3.54x │      ✗
+Async Copy + Pipeline │     0.6907 │      340.0 │      3.54x │      ✗
+=======================================================================
